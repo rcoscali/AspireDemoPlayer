@@ -1,0 +1,13 @@
+<?xml version="1.0" standalone="yes"?>
+<p4codeline xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="//p4cmsrv/p4cm$/win/P4CM/P4CM_XSD/p4codeline_1_0.xsd">
+  <module currentVersion="AspireDemoPlayer_0_0_0_1" name="AspireDemoPlayer">
+    <codeline owner="eghagha" path="//CAKM-RESTRICTED/ASPDROID/AspireDemoPlayer/MAIN/...">
+      <namingConvention/>
+      <rules>
+        <rule>Main development codeline for Aspire droid drm plugin</rule>
+        <rule> Tagging convention is AspireDemoPlayer_w_x_y_z</rule>
+      </rules>
+      <description>Main development codeline for the aspire demo application)</description>
+    </codeline>
+  </module>
+</p4codeline>
