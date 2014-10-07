@@ -4,9 +4,10 @@ package com.nagravision.aspiredemoplayer.drm;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
-import android.content.ContentValues;
+import com.nagravision.aspiredemoplayer.Content;
+import com.nagravision.aspiredemoplayer.MainActivity;
+
 import android.content.Context;
 import android.drm.DrmErrorEvent;
 import android.drm.DrmEvent;
@@ -15,11 +16,6 @@ import android.drm.DrmInfoEvent;
 import android.drm.DrmInfoRequest;
 import android.drm.DrmManagerClient;
 import android.drm.DrmRights;
-import android.drm.DrmStore;
-import android.media.DeniedByServerException;
-import android.media.MediaDrm;
-import android.media.NotProvisionedException;
-import android.media.UnsupportedSchemeException;
 import android.util.Log;
 
 
@@ -30,19 +26,40 @@ public final class DrmAgent {
 	private static final String PLUG_IN_NAME = "NagraVision DRM plug-in";
 	private boolean mIsNagraPlugInAvalable = false;
 	private static DrmAgent gInstance = null;
-	private MediaDrm mMediaDrm = null;
+	private static String FILE_BASE_PATH = null;
+	private String mContentRightsFile = "";
 	
 	private String mUserName = "";
 	private String mPassword = "";
 	private String mAndroidId = "";
-	private String mDbPath = "";
 	private Map<String, String> mKeysMap = new HashMap<String, String>();
+	
+	/**
+	 * @brief
+	 *   Get the content base path
+	 *   
+	 * @return FILE_BASE_PATH
+	 */
+	public static String gGetBasePath(){
+		return FILE_BASE_PATH;
+	}
+	
+	/**
+	 * @brief
+	 *   Set the content base path
+	 *   
+	 * @param xBasePath
+	 */
+	public static void  gSetBasePath(String xBasePath){
+		FILE_BASE_PATH = xBasePath;
+	}
+	
 	/**
 	 * @brief
 	 *   Static method to create the drm agent
 	 * @param xContext
 	 *   The application context
-	 * @return The drmagent object
+	 * @return The DrmAgent object
 	 */
 	public static void gCreateInstance(Context xContext) {
 	      if(gInstance == null) {
@@ -53,7 +70,7 @@ public final class DrmAgent {
 	/**
 	 * @brief
 	 *   Static method to get the drm agent
-	 * @return The drmagent object
+	 * @return The DrmAgent object
 	 */
 	public static DrmAgent getInstance() {
 	      return gInstance;
@@ -74,7 +91,11 @@ public final class DrmAgent {
 		
 		this.mKeysMap.put("809a82baec0e4254bf43573eed9eac02.txt", 
 				"7f99069578ab4dae8d6ce24cc3210232");
-		
+
+ 		if (FILE_BASE_PATH == null)
+ 			gSetBasePath(xContext.getExternalFilesDir(null).getAbsolutePath());
+
+		mContentRightsFile = gGetBasePath()+"/contentrights.rights";
 		
 			mDrmMgrClt = new DrmManagerClient(xContext);			
 			mDrmMgrClt.setOnErrorListener(new DrmManagerClient.OnErrorListener(){
@@ -156,7 +177,7 @@ public final class DrmAgent {
 	 * @return true
 	 *   playable rights else false
 	 */
-	public boolean acquireDrmInfoRights(String xVideoLocation, String xContentRightsFile, String xMimeType)	{
+	public boolean acquireDrmInfoRights(String xContentId, String xMimeType)	{
 		
 		boolean retVal = false;
 		
@@ -183,10 +204,9 @@ public final class DrmAgent {
 					break;
 				}*/
 						
-				DrmRights contentRights = new DrmRights(xContentRightsFile,xMimeType);	
-				String mediaName = xVideoLocation.substring(xVideoLocation
-						.lastIndexOf("/") + 1);
-				retVal = (0 == mDrmMgrClt.saveRights(contentRights, xContentRightsFile, mediaName));
+				DrmRights contentRights = new DrmRights(mContentRightsFile, xMimeType);
+
+				retVal = (0 == mDrmMgrClt.saveRights(contentRights, mContentRightsFile, xContentId));
 				retVal = true;
 				break;
 			}
@@ -198,8 +218,8 @@ public final class DrmAgent {
 		return retVal;
 	}
 	
-	public int checkDrmInfoRights(String xContent){
-		return mDrmMgrClt.checkRightsStatus(xContent);
+	public int checkDrmInfoRights(String xContentId){
+		return mDrmMgrClt.checkRightsStatus(xContentId);
 	}
 	
 	/**
@@ -315,7 +335,7 @@ public final class DrmAgent {
 	}
 	
 	public void setDatabasePath(String xPath){
-		mDbPath = xPath;
+		gSetBasePath(xPath);
 	}
 
 	public boolean isRegistered() {
@@ -330,7 +350,7 @@ public final class DrmAgent {
 			}
 			
 			String registered = (String)drmInfo.get("PERSO");
-			if(registered == null || !registered.toUpperCase().equals("YES"))
+			if(registered == null || !registered.equals("yes"))
 			{
 				Log.v(TAG, "isRegistered: Device is not registered" );
 				break;

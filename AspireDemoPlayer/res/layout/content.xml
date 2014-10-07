@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:numColumns="auto_fit"
-    android:columnWidth="90dp"
+    android:columnWidth="120dp"
     android:background="@drawable/nagravision"
     android:horizontalSpacing="10dp"
     android:verticalSpacing="10dp"

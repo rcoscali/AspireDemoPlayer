@@ -17,6 +17,7 @@ public class AudioPlayer extends Activity {
 	private static final String MEDIA = "media";
 	private Bundle mExtras;
 	private String mAudioName;
+	private String mAudioUri;
 	private DrmAgent mDrmAgent = null;
 
 	private TextView tx;
@@ -28,6 +29,7 @@ public class AudioPlayer extends Activity {
 		setContentView(tx);
 		mExtras = getIntent().getExtras();
 		mAudioName = (String)mExtras.getSerializable("MEDIANAME");
+		mAudioUri = (String)mExtras.getSerializable("MEDIAURI");
 		playAudio((ImageAdapter.Media) mExtras.getSerializable(MEDIA));
 		mDrmAgent = DrmAgent.getInstance();
 	}
@@ -35,35 +37,18 @@ public class AudioPlayer extends Activity {
 	private void playAudio(ImageAdapter.Media xMedia) {
 		try {
 			boolean play = false;
-			AssetFileDescriptor afd = null;
-			switch (xMedia) {
-			case LOCAL_AUDIO:
 
-				afd = getAssets().openFd(mAudioName);
-				if (afd == null) {
-					// Tell the user to provide an audio file URL.
-					Toast.makeText(
-							AudioPlayer.this,
-							"Please edit ImageAdapter Class, "
-									+ "and set the path variable to your audio file path."
-									+ " Your audio file must be stored on sdcard.",
-							Toast.LENGTH_LONG).show();
-				}
+			switch (xMedia) {
+
+			case LOCAL_AUDIO:
+			case STREAM_AUDIO:
 
 				mMediaPlayer = new MediaPlayer();
-				mMediaPlayer.setDataSource(afd.getFileDescriptor(),
-						afd.getStartOffset(), afd.getLength());
+				mMediaPlayer.setDataSource(mAudioUri);
 
 				play = true;
 				break;
 
-			case STREAM_AUDIO:
-
-				// mMediaPlayer = MediaPlayer.create(this,
-				// R.raw.allegro_from_duet_in_c_major);//allegro_from_duet_in_c_major.mp3
-				// mMediaPlayer.start();
-				// play = true;
-				break;
 			default:
 				break;
 

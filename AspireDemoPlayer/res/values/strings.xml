@@ -17,5 +17,7 @@
     <string name="login_button_label">Login</string>
     <string name="purchase_button_label">Buy</string>
     <string name="description">Buy</string>
+    <string name="checkBox">save password</string>
+    
     
 </resources>

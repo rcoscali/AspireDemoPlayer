@@ -18,395 +18,681 @@ import android.media.MediaCrypto;
 import android.media.MediaCryptoException;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
+import android.media.MediaMetadataRetriever;
 import android.os.Bundle;
 import android.util.Log;
+import android.util.SparseArray;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.graphics.Rect;
+import android.graphics.Canvas;
 
 public class VideoPlayer extends Activity implements SurfaceHolder.Callback {
 
-	private static final String TAG = "VideoPlayer";
-	private SurfaceView mPreview;
-	private SurfaceHolder mHolder;
-	private Bundle mExtras;
-	private static final String MEDIA = "media";
-	private String mVideoName = "";
-	private DrmAgent mDrmAgent = null;
-	MediaExtractor mExtractor = null;
-	PlayerThread mPlayerThread = null;
+    private static final String TAG = "VideoPlayer";
+    private SurfaceView mPreview;
+    private SurfaceHolder mHolder;
+    private Bundle mExtras;
+    private static final String MEDIA = "media";
+    private String mVideoName = "";
+    private String mVideoUri = "";
+    private DrmAgent mDrmAgent = null;
+    private MediaMetadataRetriever mMetadataRetriever = null;
+    private int mWidth = 0;
+    private int mHeight = 0;
+    
+    MediaExtractor mExtractor = null;
+    PlayerThread mPlayerThread = null;
 
-	/**
-	 * 
-	 * Called when the activity is first created.
-	 */
-	@Override
-	public void onCreate(Bundle xBundle) {
-		super.onCreate(xBundle);
-		setContentView(R.layout.row);
-		mPreview = (SurfaceView) findViewById(R.id.surface);
-		mHolder = mPreview.getHolder();
-		mHolder.addCallback(this);
-		mExtras = getIntent().getExtras();
-		mVideoName = (String) mExtras.getSerializable("MEDIANAME");
-		mExtractor = new MediaExtractor();
-		mDrmAgent = DrmAgent.getInstance();
-	}
+    public enum Media {
+        AUDIO, VIDEO
+    }
 
-	private void playVideo(ImageAdapter.Media xMedia) {
-		try {
-			switch (xMedia) {
+    /**
+     * 
+     * Called when the activity is first created.
+     */
+    @Override
+    public void onCreate(Bundle xBundle) {
+        super.onCreate(xBundle);
+        setContentView(R.layout.row);
+        mPreview = (SurfaceView) findViewById(R.id.surface);
+        mHolder = mPreview.getHolder();
+        mHolder.addCallback(this);
+        mExtras = getIntent().getExtras();
+        mVideoName = (String) mExtras.getSerializable("MEDIANAME");
+        mVideoUri = (String) mExtras.getSerializable("MEDIAURI");
+        mExtractor = new MediaExtractor();
+        mMetadataRetriever = new MediaMetadataRetriever();
+        mMetadataRetriever.setDataSource(VideoPlayer.this.getBaseContext(), URI.create(mVideoUri));
+        mDrmAgent = DrmAgent.getInstance();
+    }
 
-			case LOCAL_VIDEO:
-			case DRM_LOCAL_VIDEO:
-				startVideoPlayback();
-				break;
-			case STREAM_VIDEO:
-				break;
-			default:
-				break;
-			}
+    private void playVideo(ImageAdapter.Media xMedia) {
+        try {
+            switch (xMedia) {
 
-		} catch (Exception xExcep) {
-			Log.e(TAG, "error: " + xExcep.getMessage(), xExcep);
-		}
-	}
+            case LOCAL_VIDEO:
+            case DRM_LOCAL_VIDEO:
+            case STREAM_VIDEO:
+            case DRM_STREAM_VIDEO:
+                mWidth = mMetadataRetriever.extractMetadata(mMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+                mHeight = mMetadataRetriever.extractMetadata(mMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+                startVideoPlayback();
+                break;
 
-	@Override
-	public void surfaceChanged(SurfaceHolder surfaceholder, int i, int j, int k) {
-		Log.d(TAG, "surfaceChanged called");
+            case LOCAL_AUDIO:
+            case DRM_LOCAL_AUDIO:
+            case STREAM_AUDIO:
+            case DRM_STREAM_AUDIO:
+                startAudioPlayback();
+                break;
 
-		this.mHolder.setFixedSize(1024, 768);
-		playVideo((ImageAdapter.Media) mExtras.getSerializable(MEDIA));
-	}
+            default:
+                Log.e(TAG, "Unknown media type (" + xMedia + ") !!");
+                break;
+            }
 
-	@Override
-	public void surfaceDestroyed(SurfaceHolder surfaceholder) {
-		Log.d(TAG, "surfaceDestroyed called");
-	}
+        } catch (Exception xExcep) {
+            Log.e(TAG, "error: " + xExcep.getMessage(), xExcep);
+        }
+    }
 
-	@Override
-	public void surfaceCreated(SurfaceHolder holder) {
-		Log.d(TAG, "surfaceCreated called");
+    @Override
+    public void surfaceChanged(SurfaceHolder surfaceholder, int i, int j, int k) {
+        Log.d(TAG, "surfaceChanged called");
 
-	}
+        Rect theRect = this.mHolder.getSurfaceFrame(); 
+        this.mHolder.setFixedSize(Rect.width(), (mHeight * Rect.width()) / mWidth);
+        playVideo((ImageAdapter.Media) mExtras.getSerializable(MEDIA));
+    }
 
-	@Override
-	protected void onPause() {
-		super.onPause();
-		releaseMediaPlayer();
-	}
+    @Override
+    public void surfaceDestroyed(SurfaceHolder surfaceholder) {
+        Log.d(TAG, "surfaceDestroyed called");
+    }
 
-	@Override
-	protected void onDestroy() {
-		releaseMediaPlayer();
-		super.onDestroy();
-	}
+    @Override
+    public void surfaceCreated(SurfaceHolder holder) {
+        Log.d(TAG, "surfaceCreated called");
 
-	private void releaseMediaPlayer() {
+    }
 
-		try {
-			if (null != this.mPlayerThread) {
-				mPlayerThread.interrupt(); // doesn't seem to work
-				mPlayerThread.stopStream();// hack to make it work
-				mPlayerThread.join(500);
-				if (mPlayerThread.isAlive()) {
-					Log.e(TAG, "Serious problem with player thread!");
-				}
-				mPlayerThread = null;
-			}
+    @Override
+    protected void onPause() {
+        super.onPause();
+        releaseMediaPlayer();
+    }
 
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
+    @Override
+    protected void onDestroy() {
+        releaseMediaPlayer();
+        super.onDestroy();
+    }
 
-	}
+    private void releaseMediaPlayer() {
 
-	private void startVideoPlayback() {
-		Log.v(TAG, "startVideoPlayback");
-		if (null == mPlayerThread) {
-			mPlayerThread = new PlayerThread(mHolder.getSurface());
-			String uri = "file:///data/drm/contents/" + mVideoName;
-			mPlayerThread.setDataSource(uri);
-			mPlayerThread.start();
-		}
-	}
+        try {
+            if (null != this.mPlayerThread) {
+                mPlayerThread.interrupt(); // doesn't seem to work
+                mPlayerThread.stopStream();// hack to make it work
+                mPlayerThread.join(1000); // wait a second
+                if (mPlayerThread.isAlive()) {
+                    Log.e(TAG, "Serious problem with player thread!");
+                }
+                mPlayerThread = null;
+            }
 
-	private class PlayerThread extends Thread {
-		private MediaExtractor mExtractor;
-		private MediaCodec[] mMediaCodec;
-		private Surface mSurface;
-		private String mDataSource;
-		MediaCrypto mMediaCrypto;
-		private boolean mStopStream = false;
-		MediaCodec.CryptoInfo mCryptoInfo = new MediaCodec.CryptoInfo();
-		long mStartMs;
-		boolean mIsEndOfStream;
-		String mPsshData;
-		RenderingBuffers[] mBuffers;
-		AudioTrack mAudioTrack;
-		private final long TIME_OUT_MICRO_SECS = 10000000;
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
-		public PlayerThread(Surface xSurface) {
-			this.mSurface = xSurface;
-		}
+    }
 
-		public void stopStream() {
-			this.mStopStream = true;
-		}
+    private void startVideoPlayback() {
+        Log.v(TAG, "startVideoPlayback");
+        if (null == mPlayerThread) {
+            mPlayerThread = new PlayerThread(mHolder.getSurface());
+            mPlayerThread.setDataSource(mVideoUri);
+            try {
+                mPlayerThread.renderAudioVideo();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
-		@Override
-		public void run() {
-			if (!this.mDataSource.equals("")) {
-				try {
-					playDrmContent();
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			} else {
-				Log.v(TAG,
-						"No Media Uri Call setDataSource() before thread start()");
-			}
-		}
+    private void startAudioPlayback() {
+        Log.v(TAG, "startVideoPlayback");
+        if (null == mPlayerThread) {
+            // mHolder.getSurface()
+            VideoPlayer.this.getBaseContext().getResources().getDrawable(R.drawable.audio_player_background).draw(mHolder.lockCanvas());
+            mHolder.unlockCanvasAndPost();
+            mPlayerThread = new PlayerThread(null);
+            mPlayerThread.setDataSource(mVideoUri);
+            try {
+                mPlayerThread.renderAudioVideo();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
-		public void setDataSource(String xDataSource) {
-			this.mDataSource = xDataSource;
-			Log.v(TAG, "Media Uri: " + this.mDataSource);
-		}
+    private class PlayerThread extends Thread {
+        MediaExtractor mExtractor;
+        private Surface mSurface;
+        private String mDataSource;
+        private boolean mStopStream = false;
+        MediaCodec.CryptoInfo mCryptoInfo = new MediaCodec.CryptoInfo();
+        long mStartMs;
+        String mPsshData;
+        AudioTrack mAudioTrack;
+        private final long TIME_OUT_MICRO_SECS = 1000000;
+        SparseArray<RenderObject> mRenderObjects = new SparseArray<RenderObject>();
 
-		private void playDrmContent() throws InterruptedException {
+        public PlayerThread(Surface xSurface) {
+            this.mSurface = xSurface;
+        }
 
-			try {
-//				mAudioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, 44100,
-//						AudioFormat.CHANNEL_OUT_STEREO,
-//						AudioFormat.ENCODING_PCM_16BIT, 8192 * 2,
-//						AudioTrack.MODE_STATIC);
-				mExtractor = new MediaExtractor();
-				mExtractor.setDataSource(mDataSource);
-				int numTracks = mExtractor.getTrackCount();
-				Log.v(TAG, "Number of tracks: " + numTracks);
+        public void stopStream() {
+            this.mStopStream = true;
+        }
 
-				mBuffers = new RenderingBuffers[numTracks];
-				mMediaCodec = new MediaCodec[numTracks];
-				MediaFormat[] format = new MediaFormat[numTracks];
+        @Override
+        public void run() {
+            if (!this.mDataSource.equals("")) {
+                try {
+                    renderAudioVideo();
 
-				for (int i = 0; i < numTracks; ++i) {
-					format[i] = mExtractor.getTrackFormat(i);
-					String mime = format[i].getString(MediaFormat.KEY_MIME);
-					Log.v(TAG, "Track[" + i + "].mime = " + mime);
-					if (mime.equals("video/avc")) {
-						mExtractor.selectTrack(i);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                Log.v(TAG,
+                      "No Media Uri Call setDataSource() before thread start()");
+            }
+        }
 
-						mMediaCodec[i] = MediaCodec.createDecoderByType(mime);
-						boolean isCryptoSupported = false;
-						Map<UUID, byte[]> psshInfo = mExtractor.getPsshInfo();
-						if (null != psshInfo) {
-							for (Iterator<UUID> it = psshInfo.keySet()
-									.iterator(); it.hasNext();) {
-								UUID uuid = it.next();
-								if (MediaCrypto.isCryptoSchemeSupported(uuid)) {
-									Log.v(TAG, "Supported crypto scheme");
-									mPsshData = new String(psshInfo.get(uuid));
-									Log.v(TAG,
-											"PSSH for UUID: " + uuid.toString()
-													+ " has data :" + mPsshData);
+        public void setDataSource(String xDataSource) {
+            this.mDataSource = xDataSource;
+            Log.v(TAG, "Media Uri: " + this.mDataSource);
+        }
 
-									mMediaCrypto = new MediaCrypto(uuid,
-											psshInfo.get(uuid));
+        /**
+         * @brief
+         * 
+         *        Make a render object for each track
+         * 
+         */
+        private void createRenderObjects() {
+            try {
+                // set up main extractor
+                mExtractor = new MediaExtractor();
+                mExtractor.setDataSource(mDataSource);
+                int numTracks = mExtractor.getTrackCount();
+                Log.v(TAG, "Number of tracks: " + numTracks);
 
-									isCryptoSupported = true;
-									break;
+                for (int i = 0; i < numTracks; i++) {
+                    MediaFormat format = mExtractor.getTrackFormat(i);
+                    String mime = format.getString(MediaFormat.KEY_MIME);
+                    Log.v(TAG, "Track[" + i + "].mime = " + mime);
 
-								}
-							}
-						}
+                    RenderObject renderObject = null;
+                    if (mime.equals("video/avc")) {
+                        renderObject = new VideoRenderObject();
+                    } else if (mime.equals("audio/mp4a-latm")) {
+                        renderObject = new AudioRenderObject();
+                    }
 
-						mMediaCodec[i].configure(format[i], mSurface,
-								mMediaCrypto, 0);
+                    this.mExtractor.selectTrack(i);
 
-						if (!isCryptoSupported) {
-							Log.v(TAG, "Unsupported crypto scheme");
-							//break;
-						}
-					}
+                    if (null != renderObject) {
+                        renderObject.mMediaExtractor = mExtractor;
+                        renderObject.mRenderingBuffers = new RenderingBuffers();
+                        renderObject.mFormat = format;
+                        renderObject.mTrackId = i;
+                        renderObject.initializeObject(mime);
+                        mRenderObjects.put(i, renderObject);
+                    }
 
-					if (mime.equals("audio/mp4a-latm")) {
-						mMediaCodec[i] = MediaCodec.createDecoderByType(mime);
-						mMediaCodec[i].configure(format[i], null, mMediaCrypto,
-								0);
+                }
 
-					}
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
 
-				}
+        private void renderAudioVideo() throws InterruptedException {
 
-				for (int i = 0; i < numTracks; ++i) {
-					if (mMediaCodec[i] != null) {
-						mMediaCodec[i].start();
-						mBuffers[i] = new RenderingBuffers();
-						mBuffers[i].mInputBuffers = mMediaCodec[i]
-								.getInputBuffers();
-						mBuffers[i].mOutputBuffers = mMediaCodec[i]
-								.getOutputBuffers();
-						mBuffers[i].mBufferInfo = new BufferInfo();
-					}
-				}
+            // create on render object per track in the data source
+            createRenderObjects();
 
-				mIsEndOfStream = false;
-				mStartMs = System.currentTimeMillis();
+            int numTracks = 1;//mRenderObjects.size();
 
-				for (;;) {
-					if (isInterrupted()) {
-						break;
-					}
+            for (int i = 0; i < numTracks; i++) {
 
-					if (mStopStream)
-						break;
+                // get a tracks render object
+                RenderObject renderObject = (RenderObject) mRenderObjects
+                    .get(mRenderObjects.keyAt(i));
 
-					if (renderVideo(0)) {
-						break;
-					}
-					
-					/*if (renderAudio(1)) {
-						continue;
-					}*/
+                // start the decoder for the track
+                renderObject.startDecoder();
 
-					
-				}
+                // start the audio and video render thread
+                if (renderObject.mMedia == Media.VIDEO) {
+                    renderObject.mRenderThread = new VideoPlayerThread(this,
+                                                                       renderObject);
+                    new Thread(renderObject.mRenderThread, "Video Thread")
+                        .start();
+                } else if (renderObject.mMedia == Media.AUDIO) {
+                    renderObject.mRenderThread = new AudioPlayerThread(this,
+                                                                       renderObject);
+                    new Thread(renderObject.mRenderThread, "Audio Thread")
+                        .start();
+                }
+            }
 
-				for (int i = 0; i < numTracks; ++i) {
-					
-					if(mMediaCodec[i] != null){
-						mMediaCodec[i].stop();
-						mMediaCodec[i].release();
-						mMediaCodec[i] = null;
-					}
-					
-					if(mMediaCodec[i] != null){
-						mBuffers[i] = null;
-					}
-				}
-				
-				mExtractor.release();
-				mMediaCodec = null;
-				mExtractor = null;
-				mBuffers = null;
+            mStartMs = System.currentTimeMillis();
 
-			} catch (IOException e) {
-				e.printStackTrace();
-			} catch (MediaCryptoException e) {
-				Log.e(TAG, "Could not instanciate MediaCrypto ! " + e);
-			}
+            for (int i = 0; i < numTracks; i++) {
+                // get a tracks render object
+                RenderObject renderObject = (RenderObject) mRenderObjects
+                    .get(mRenderObjects.keyAt(i));
+                renderObject.mRenderThread.startThread();
+            }
 
-		}
+            // select the first track
+            int track = 0;
+            this.mExtractor.selectTrack(track);
 
-		private void inputBuffer(int xtrack) {
+            for (;;) {
+                if (isInterrupted()) {
+                    break;
+                }
 
-			mExtractor.selectTrack(xtrack);
-			int inputBufferIndex = mMediaCodec[xtrack]
-					.dequeueInputBuffer(TIME_OUT_MICRO_SECS);
-			if (inputBufferIndex >= 0) {
-				ByteBuffer buffer = mBuffers[xtrack].mInputBuffers[inputBufferIndex];
-				int sampleSize = mExtractor.readSampleData(buffer, 0);
-				Log.v(TAG,
-						"Read data from extractor (and crypto) and provide to decoder\n");
-				if (sampleSize < 0) {
-					Log.v(TAG, "InputBuffer BUFFER_FLAG_END_OF_STREAM\n");
-					mMediaCodec[xtrack].queueInputBuffer(inputBufferIndex, 0,
-							0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-				} else {
-					mExtractor.getSampleCryptoInfo(mCryptoInfo);
+                if (mStopStream) {
+                    for (int i = 0; i < numTracks; i++) {
+                        // get a tracks render object
+                        RenderObject renderObject = (RenderObject) mRenderObjects
+                            .get(mRenderObjects.keyAt(i));
+                        renderObject.mRenderThread.stopThread();
+                    }
+                    break;
+                }
 
-					if (mCryptoInfo.mode == MediaCodec.CRYPTO_MODE_UNENCRYPTED) {
-						mMediaCodec[xtrack].queueInputBuffer(inputBufferIndex,
-								0, sampleSize, mExtractor.getSampleTime(), 0);
-					} else {
-						mCryptoInfo.key = mDrmAgent.provideKey(mPsshData);
-						
-						mMediaCodec[xtrack].queueSecureInputBuffer(
-								inputBufferIndex, 0, mCryptoInfo,
-								mExtractor.getSampleTime(), mCryptoInfo.mode);
-					}
-					mExtractor.advance();
-				}
-			}
-		}
+                boolean isStopped = true;
+                for (int i = 0; i < numTracks; i++) {
+                    // get a tracks render object
+                    RenderObject renderObject = (RenderObject) mRenderObjects
+                        .get(mRenderObjects.keyAt(i));
+                    isStopped = isStopped
+                        && renderObject.mRenderThread.isStopped();
+                }
 
-		private int outputBuffer(int xtrack) {
-			int outIndex = mMediaCodec[xtrack].dequeueOutputBuffer(
-					mBuffers[xtrack].mBufferInfo, TIME_OUT_MICRO_SECS);
+                if (isStopped) {
+                    break;
+                }
 
-			switch (outIndex) {
-			case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
-				Log.v(TAG, "INFO_OUTPUT_BUFFERS_CHANGED\n");
-				mBuffers[xtrack].mOutputBuffers = mMediaCodec[xtrack]
-						.getOutputBuffers();
-				break;
-			case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
-				Log.v(TAG,
-						"INFO_OUTPUT_FORMAT_CHANGED "
-								+ mMediaCodec[xtrack].getOutputFormat());
-				break;
-			case MediaCodec.INFO_TRY_AGAIN_LATER:
-				Log.v(TAG, "INFO_TRY_AGAIN_LATER decoder timmed out");
-				break;
+                RenderObject renderObject = (RenderObject) mRenderObjects
+                    .get(mRenderObjects.keyAt(track));
 
-			}
+                track = enqueue(renderObject);
 
-			return outIndex;
-		}
 
-		private boolean renderVideo(int xTrack) {
+            }
 
-			inputBuffer(xTrack);
-			int outIndex = outputBuffer(xTrack);
-			if (outIndex >= 0) {
-				ByteBuffer buffer = mBuffers[xTrack].mOutputBuffers[outIndex];
-				Log.v(TAG, "Rendering video ....." + buffer);
-				while (mBuffers[xTrack].mBufferInfo.presentationTimeUs / 1000 > System
-						.currentTimeMillis() - mStartMs) {
-					try {
-						sleep(10);
-					} catch (InterruptedException e) {
-						e.printStackTrace();
-						break;
-					}
-				}
-				mMediaCodec[xTrack].releaseOutputBuffer(outIndex, true);
-			}
+            releaseAll();
+        }
 
-			// All decoded frames have been rendered
-			if ((mBuffers[xTrack].mBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-				Log.v(TAG, "outputBuffers BUFFER_FLAG_END_OF_STREAM");
-				mIsEndOfStream = true;
-			}
+        private void releaseAll() {
+            for (int i = 0; i < mRenderObjects.size(); ++i) {
 
-			return mIsEndOfStream;
-		}
+                RenderObject renderObject = (RenderObject) mRenderObjects
+                    .get(mRenderObjects.keyAt(i));
+                renderObject.startDecoder();
 
-		private boolean renderAudio(int xTrack) {
-			inputBuffer(xTrack);
-			int outIndex = outputBuffer(xTrack);
-			if(outIndex >= 0){
-				ByteBuffer buffer = mBuffers[xTrack].mOutputBuffers[outIndex];
-				Log.v(TAG, "Rendering audio....." + buffer);
-				final byte[] chunk = new byte[mBuffers[xTrack].mBufferInfo.size];
-				buffer.get(chunk);
-				buffer.clear();
-				mAudioTrack.play();
-				if(chunk.length > 0){
-					mAudioTrack.write(chunk, 0, chunk.length);
-				}
-				mMediaCodec[xTrack].releaseOutputBuffer(outIndex, false);
-			}
+                if (renderObject.mMediaCodec != null) {
+                    renderObject.mMediaCodec.stop();
+                    renderObject.mMediaCodec.release();
+                    renderObject.mMediaCodec = null;
+                }
 
-			return false;
-		}
+                if (renderObject.mRenderingBuffers != null) {
+                    renderObject.mRenderingBuffers = null;
+                }
 
-		private class RenderingBuffers {
-			public ByteBuffer[] mInputBuffers;
-			public ByteBuffer[] mOutputBuffers;
-			public BufferInfo mBufferInfo;
-		}
+                renderObject.mRenderingBuffers = null;
+                renderObject.mMediaExtractor.release();
+                renderObject.mMediaExtractor = null;
+                renderObject = null;
+            }
 
-	}
+            mRenderObjects.clear();
+        }
+
+        /**
+         * @brief enqueue data
+         * 
+         * @param xRenderObject
+         *            The render object to enqueue to
+         * 
+         * @return The next track
+         */
+        public int enqueue(RenderObject xRenderObject) {
+
+            if (xRenderObject.mTrackId == mExtractor.getSampleTrackIndex()) {
+                int inputBufferIndex = xRenderObject.mMediaCodec
+                    .dequeueInputBuffer(TIME_OUT_MICRO_SECS);
+                if (inputBufferIndex >= 0) {
+                    ByteBuffer buffer = xRenderObject.mRenderingBuffers.mInputBuffers[inputBufferIndex];
+                    buffer.clear();
+                    // xRenderObject.mOffset = buffer.position();
+                    int sampleSize = mExtractor.readSampleData(buffer,
+                                                               xRenderObject.mOffset);
+                    // buffer.position(xRenderObject.mOffset + sampleSize);
+
+                    Log.v(TAG, "Read data from extractor (and crypto) track "
+                          + xRenderObject.mTrackId
+                          + " and provide to decoder sample size "
+                          + sampleSize + "\n");
+                    if (sampleSize < 0) {
+                        Log.v(TAG,
+                              "Enqueue InputBuffer BUFFER_FLAG_END_OF_STREAM\n");
+                        xRenderObject.mMediaCodec.queueInputBuffer(
+                                                                   inputBufferIndex, 0, 0, 0,
+                                                                   MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                    } else {
+                        mExtractor.getSampleCryptoInfo(mCryptoInfo);
+                        if (mCryptoInfo.mode == MediaCodec.CRYPTO_MODE_UNENCRYPTED) {
+                            Log.v(TAG, "Enqueue clear data .....");
+                            xRenderObject.mMediaCodec.queueInputBuffer(
+                                                                       inputBufferIndex, 0, sampleSize,
+                                                                       mExtractor.getSampleTime(), 0);
+                            Log.v(TAG, "..... clear data enqueued");
+                        } else {
+                            Log.v(TAG, "Enqueue encrypted data .....");
+                            mCryptoInfo.key = mDrmAgent.provideKey(mPsshData);
+
+                            xRenderObject.mMediaCodec.queueSecureInputBuffer(
+                                                                             inputBufferIndex, 0, mCryptoInfo,
+                                                                             mExtractor.getSampleTime(),
+                                                                             mCryptoInfo.mode);
+                            Log.v(TAG, "Encrypted data enqueued");
+                        }
+                        if (!mExtractor.advance()) {
+                            Log.v(TAG, "No more samples\n");
+                        }
+                    }
+                }
+            }
+
+            return mExtractor.getSampleTrackIndex();
+        }
+
+        private class RenderingBuffers {
+            public ByteBuffer[] mInputBuffers;
+            public ByteBuffer[] mOutputBuffers;
+            public BufferInfo mBufferInfo;
+        }
+
+        private abstract class RenderObject {
+            public MediaExtractor mMediaExtractor;
+            public MediaCodec mMediaCodec;
+            public MediaCrypto mMediaCrypto;
+            public RenderingBuffers mRenderingBuffers;
+            public MediaFormat mFormat;
+            public int mTrackId;
+            protected MediaPlayerThread mRenderThread;
+            protected Media mMedia;
+            public int mOffset;
+
+            public abstract void initializeObject(String xMime) {
+                if (!checkCryptoSupport())
+                    Log.v(TAG, "Unsupported crypto scheme on track " + mTrackId);
+
+                mMediaCodec = MediaCodec.createDecoderByType(xMime);
+                mMediaCodec.configure(mFormat, mSurface, mMediaCrypto, 0);
+            }
+
+            public abstract int dequeue();
+
+            public abstract boolean render(int xIndex);
+
+            public void startDecoder() {
+                if (mMediaCodec != null && mRenderingBuffers != null) {
+                    mMediaCodec.start();
+                    mRenderingBuffers.mInputBuffers = mMediaCodec
+                        .getInputBuffers();
+                    mRenderingBuffers.mOutputBuffers = mMediaCodec
+                        .getOutputBuffers();
+                    mRenderingBuffers.mBufferInfo = new BufferInfo();
+                }
+            }
+
+            protected boolean checkCryptoSupport() {
+                boolean isCryptoSupported = false;
+                Map<UUID, byte[]> psshInfo = mMediaExtractor.getPsshInfo();
+                if (null != psshInfo) {
+                    for (Iterator<UUID> it = psshInfo.keySet().iterator(); it
+                             .hasNext();) {
+                        UUID uuid = it.next();
+                        if (MediaCrypto.isCryptoSchemeSupported(uuid)) {
+                            Log.v(TAG, "Supported crypto scheme");
+                            mPsshData = new String(psshInfo.get(uuid));
+                            Log.v(TAG, "PSSH for UUID: " + uuid.toString()
+                                  + " has data :" + mPsshData);
+
+                            try {
+                                mMediaCrypto = new MediaCrypto(uuid,
+                                                               psshInfo.get(uuid));
+                            } catch (MediaCryptoException e) {
+                                e.printStackTrace();
+                            }
+                            isCryptoSupported = true;
+                        }
+                    }
+                }
+                return isCryptoSupported;
+            }
+        }
+
+        private class VideoRenderObject extends RenderObject {
+            public void initializeObject(String xMime) {
+                super(xMime);
+                mMedia = Media.VIDEO;
+            }
+
+            @Override
+            public int dequeue() {
+                //Log.v(TAG, "Dequeue data from track " + mTrackId);
+                int outIndex = mMediaCodec.dequeueOutputBuffer(mRenderingBuffers.mBufferInfo, TIME_OUT_MICRO_SECS);
+                //Log.v(TAG, ".... data dequeued");
+
+                switch (outIndex) {
+                case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
+                    //Log.v(TAG, "INFO_OUTPUT_BUFFERS_CHANGED track " + mTrackId);
+                    mRenderingBuffers.mOutputBuffers = mMediaCodec
+                        .getOutputBuffers();
+                    break;
+                case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
+                    //Log.v(TAG,
+                    //      "INFO_OUTPUT_FORMAT_CHANGED "
+                    //      + mMediaCodec.getOutputFormat() + "track "
+                    //      + mTrackId);
+                    break;
+                case MediaCodec.INFO_TRY_AGAIN_LATER:
+                    //Log.v(TAG,
+                    //      "INFO_TRY_AGAIN_LATER decoder timmed out on track "
+                    //      + mTrackId);
+                    break;
+                }
+
+                return outIndex;
+            }
+
+            @Override
+            public boolean render(int xIndex) {
+                boolean done = false;
+                if (xIndex >= 0) {
+                    ByteBuffer buffer = mRenderingBuffers.mOutputBuffers[xIndex];
+                    Log.v(TAG, "Rendering video track " + mTrackId);
+                    while (mRenderingBuffers.mBufferInfo.presentationTimeUs / 1000 > System
+                           .currentTimeMillis() - mStartMs) {
+                        try {
+                            sleep(10);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                            break;
+                        }
+                    }
+                    mMediaCodec.releaseOutputBuffer(xIndex, true);
+                }
+
+                // All decoded frames have been rendered
+                if ((mRenderingBuffers.mBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    Log.v(TAG, "outputBuffers BUFFER_FLAG_END_OF_STREAM track "
+                          + mTrackId);
+                    done = true;
+                }
+
+                return done;
+            }
+        }
+
+        private class AudioRenderObject extends RenderObject {
+            public void initializeObject(String xMime) {
+                super(xMime);
+                mMedia = Media.AUDIO;
+            }
+
+            @Override
+            public int dequeue() {
+                Log.v(TAG, "Dequeue data .......");
+                int outIndex = mMediaCodec.dequeueOutputBuffer(
+                                                               mRenderingBuffers.mBufferInfo, 0);
+                Log.v(TAG, "Encrypted data dequeued");
+
+                switch (outIndex) {
+                case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
+                    Log.v(TAG, "INFO_OUTPUT_BUFFERS_CHANGED track " + mTrackId);
+                    mRenderingBuffers.mOutputBuffers = mMediaCodec
+                        .getOutputBuffers();
+                    break;
+                case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
+                    final MediaFormat format = mMediaCodec.getOutputFormat();
+                    Log.d(TAG, "Output format has changed to " + format + "("
+                          + MediaFormat.KEY_SAMPLE_RATE + ")" + "track "
+                          + mTrackId);
+                    mAudioTrack.setPlaybackRate(format
+                                                .getInteger(MediaFormat.KEY_SAMPLE_RATE));
+                    break;
+                case MediaCodec.INFO_TRY_AGAIN_LATER:
+                    Log.v(TAG, "INFO_TRY_AGAIN_LATER decoder timmed out track "
+                          + mTrackId);
+                    break;
+                }
+
+                return outIndex;
+            }
+
+            @Override
+            public boolean render(int xIndex) {
+                boolean done = false;
+                if (xIndex >= 0) {
+                    ByteBuffer buffer = mRenderingBuffers.mOutputBuffers[xIndex];
+                    Log.v(TAG, "Rendering audio track" + mTrackId);
+                    final byte[] chunk = new byte[mRenderingBuffers.mBufferInfo.size];
+                    buffer.get(chunk);
+                    buffer.clear();
+                    if (chunk.length > 0) {
+                        mAudioTrack.write(chunk, 0, chunk.length);
+                    }
+                    mMediaCodec.releaseOutputBuffer(xIndex, false);
+                }
+
+                // All decoded frames have been rendered
+                if ((mRenderingBuffers.mBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    Log.v(TAG, "outputBuffers BUFFER_FLAG_END_OF_STREAM track "
+                          + mTrackId);
+                    done = true;
+                }
+                return done;
+            }
+        }
+
+        private abstract class MediaPlayerThread implements Runnable {
+            protected RenderObject mRenderObject;
+            protected Thread mRunner;
+            protected boolean mStop = false;
+            protected boolean mStart = false;
+
+            public MediaPlayerThread(PlayerThread xPlayer) {
+                mRunner = new Thread(this, "Video player Thread");
+                mRunner.start();
+            }
+
+            public void stopThread() {
+                this.mStop = true;
+                try {
+                    mRunner.join(1000);
+                    if (mRunner.isAlive()) {
+                        Log.e(TAG, "Serious problem with mediaplayer thread! "
+                              + mRunner.getName());
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+
+            public boolean isStopped() {
+                return this.mStop;
+            }
+
+            public void startThread() {
+                this.mStart = true;
+            }
+
+            @Override
+            public void run() {
+                while (!mStop) {
+                    if (mStart) {
+                        int index = mRenderObject.dequeue();
+                        mStop = mRenderObject.render(index);
+                    } else {
+                        try {
+                            sleep(10);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
+        }
+
+        private class VideoPlayerThread extends MediaPlayerThread {
+            public VideoPlayerThread(PlayerThread xPlayer,
+                                     RenderObject xRenderObject) {
+                super(xPlayer);
+                this.mRenderObject = xRenderObject;
+            }
+        }
+
+        private class AudioPlayerThread extends MediaPlayerThread {
+
+            public AudioPlayerThread(PlayerThread xPlayer,
+                                     RenderObject xRenderObject) {
+                super(xPlayer);
+                this.mRenderObject = xRenderObject;
+
+                int buffsize = AudioTrack.getMinBufferSize(44100,
+                                                           AudioFormat.CHANNEL_OUT_STEREO,
+                                                           AudioFormat.ENCODING_PCM_16BIT);
+                mAudioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, 44100,
+                                             AudioFormat.CHANNEL_OUT_STEREO,
+                                             AudioFormat.ENCODING_PCM_16BIT, buffsize,
+                                             AudioTrack.MODE_STATIC);
+            }
+        }
+    }
 }

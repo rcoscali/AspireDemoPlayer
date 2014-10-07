@@ -1,11 +1,15 @@
 package com.nagravision.aspiredemoplayer;
 
+import java.io.File;
+import java.net.URI;
+
+import com.nagravision.aspiredemoplayer.ImageAdapter.Media;
 import com.nagravision.aspiredemoplayer.drm.DrmAgent;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.Environment;
 import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
@@ -30,57 +34,61 @@ public class Content extends Activity {
 		mDrmAgent = DrmAgent.getInstance();
 
 		/**
-		 * On Click event for Single Gridview Item
+		 * On Click event for Single GridView Item
 		 * */
 		mGridView.setOnItemClickListener(new OnItemClickListener() {
 			@Override
-			public void onItemClick(AdapterView<?> parent, View v,
-					int position, long id) {
+			public void onItemClick(AdapterView<?> parent, 
+									View v,
+									int position, 
+									long id) 
+			{
 				int itemId = (Integer) mImageAdapter.getItem(position);
-				ImageAdapter.Media itemMedia = (ImageAdapter.Media) mImageAdapter
-						.getItemMedia(position);
-				String itemExt = (String) mImageAdapter.getItemExt(position);
-				String filePath = getResources().getResourceName(itemId);
-				String mediaName = filePath.substring(filePath
-						.lastIndexOf("/") + 1)+itemExt;
-				Log.v(TAG, "Play request for " + mediaName);
+				
+				if (!mImageAdapter.isLocalItemAccessible(position))
+				{
+					Toast.makeText(getBaseContext(), "This media is not accessible !", Toast.LENGTH_LONG).show();
+				    return;
+				}
+				
+				ImageAdapter.Media itemMedia;
+				String itemExt = "", filePath = "", mediaUri = "", contentId = "";
+				
+				itemMedia = (ImageAdapter.Media) mImageAdapter.getItemMedia(position);
+				itemExt = (String) mImageAdapter.getItemExt(position);
+				filePath = getResources().getResourceName(itemId);
+				contentId = filePath.substring(filePath.lastIndexOf("/") + 1) + itemExt;
+				mediaUri = ((URI)mImageAdapter.getItemUri(position)).toASCIIString();
 				
 				Intent i = null;
 
-				int rightsStatus = mDrmAgent.checkDrmInfoRights(mediaName);
-				Log.v(TAG, "Right for " + mediaName + " = " + rightsStatus);
+				int rightsStatus = mDrmAgent.checkDrmInfoRights(contentId);
 				if(0 != rightsStatus){
 					// Sending to content purchaser
 					i = new Intent(getApplicationContext(), Purchase.class);
 					Toast.makeText(
 							Content.this,
-							"You do ot have the rights to view this Content "
+							"You do not have the rights to view this Content "
 									+ "Click the image to get the rights.",
 							Toast.LENGTH_LONG).show();
 				}
-				else if (itemMedia.equals(ImageAdapter.Media.LOCAL_VIDEO)
-						|| itemMedia.equals(ImageAdapter.Media.STREAM_VIDEO)
-						|| itemMedia.equals(ImageAdapter.Media.DRM_LOCAL_VIDEO)
-						|| itemMedia.equals(ImageAdapter.Media.DRM_STREAM_VIDEO)
-								) {
+				else if (mImageAdapter.isItemVideo(position)) {
 					// Sending video id to VideoPlayer
 					i = new Intent(getApplicationContext(), VideoPlayer.class);
 				}
 
-				else if (itemMedia.equals(ImageAdapter.Media.LOCAL_AUDIO)
-						|| itemMedia.equals(ImageAdapter.Media.STREAM_AUDIO)
-						|| itemMedia.equals(ImageAdapter.Media.DRM_STREAM_AUDIO)
-						|| itemMedia.equals(ImageAdapter.Media.DRM_LOCAL_AUDIO)
-						) {
+				else if (mImageAdapter.isItemAudio(position)) {
 					// Sending audio id to AudioPlayer
 					i = new Intent(getApplicationContext(), AudioPlayer.class);
-				} else {
-					Log.v(TAG, "error: Unknown media location");
 				}
+				
+				else
+			      Log.v(TAG, "error: Unknown media location");
 
-				if (i != null) {				
+				if (i != null) {
 					// passing array index
-					i.putExtra("MEDIANAME", mediaName);
+					i.putExtra("MEDIANAME", contentId);
+					i.putExtra("MEDIAURI", mediaUri);
 					i.putExtra(MEDIA, itemMedia);
 					i.putExtra("position", position);
 					startActivity(i);
