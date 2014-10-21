@@ -19,45 +19,45 @@ public class ImageAdapter extends BaseAdapter {
 	{
 	    /* Avatar Stream */
 	    new PlayerObject(R.drawable.avatar, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar.mp4")),
-	    new PlayerObject(R.drawable.avatar_cenc, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc.mp4")),
-	    new PlayerObject(R.drawable.avatar_cenc, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc2.mp4")),
-	    new PlayerObject(R.drawable.avatar_cenc, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc3.mp4")),
+	    new PlayerObject(R.drawable.avatar, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc.mp4")),
+	    new PlayerObject(R.drawable.avatar, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc2.mp4")),
+	    new PlayerObject(R.drawable.avatar, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc3.mp4")),
 		    
 	    /* Avatar Local */
 	    new PlayerObject(R.drawable.avatar, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.avatar_cenc, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
+	    new PlayerObject(R.drawable.avatar, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
 		    
 	    /* Oblivion Stream */
 	    new PlayerObject(R.drawable.oblivion, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/oblivion.mp4")),
-	    new PlayerObject(R.drawable.oblivion_cenc, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/oblivion_cenc.mp4")),
-	    new PlayerObject(R.drawable.oblivion_cenc, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("https://onedrive.live.com/download.aspx?cid=4076E5A51C407C83&resid=4076E5A51C407C83%21191&canary=DAtQGKRlJVJ05toCXET5CL%2FdoywBt2%2F95wF2xXRXF0Y%3D0")),
+	    new PlayerObject(R.drawable.oblivion, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/oblivion_cenc.mp4")),
+	    new PlayerObject(R.drawable.oblivion, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("https://onedrive.live.com/download.aspx?cid=4076E5A51C407C83&resid=4076E5A51C407C83%21191&canary=DAtQGKRlJVJ05toCXET5CL%2FdoywBt2%2F95wF2xXRXF0Y%3D0")),
 	    /* Oblivion Local */
 	    new PlayerObject(R.drawable.oblivion, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.oblivion_cenc, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
+	    new PlayerObject(R.drawable.oblivion, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
 
 	    /* SherlockHolmes Stream */
 	    new PlayerObject(R.drawable.sherlockholmes, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/sherlockholmes.mp4")),
-	    new PlayerObject(R.drawable.sherlockholmes_cenc, Media.DRM_STREAM_VIDEO,	"video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/sherlockholmes_cenc.mp4")),
+	    new PlayerObject(R.drawable.sherlockholmes, Media.DRM_STREAM_VIDEO,	"video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/sherlockholmes_cenc.mp4")),
 	    
 	    /* SherlockHolmes Local */
 	    new PlayerObject(R.drawable.sherlockholmes, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.sherlockholmes_cenc, Media.DRM_LOCAL_VIDEO,	"video/mp4",true),
+	    new PlayerObject(R.drawable.sherlockholmes, Media.DRM_LOCAL_VIDEO,	"video/mp4",true),
 	    
 	    /* Batman Local */
 	    new PlayerObject(R.drawable.thedarkknightrises, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.thedarkknightrises_cenc, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
+	    new PlayerObject(R.drawable.thedarkknightrises, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
 	    
 	    /* TheGrey Local */
 	    new PlayerObject(R.drawable.thegrey, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.thegrey_cenc, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
+	    new PlayerObject(R.drawable.thegrey, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
 	    
 	    /* Thor Local */
 	    new PlayerObject(R.drawable.thor, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.thor_cenc, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
+	    new PlayerObject(R.drawable.thor, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
 	    
 	    /* Venoms Lab 2 Stream */
 	    new PlayerObject(R.drawable.venomslab2_teaser_1080, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali2/Videos/venomslab2_teaser_1080.mp4")),
-	    new PlayerObject(R.drawable.venomslab2_teaser_1080_cenc, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali2/Videos/venomslab2_teaser_1080_cenc.mp4")),	    
+	    new PlayerObject(R.drawable.venomslab2_teaser_1080, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali2/Videos/venomslab2_teaser_1080_cenc.mp4")),	    
 	    
 	    /* Sintel Stream */
 	    new PlayerObject(R.drawable.sintel_poster, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://mirrorblender.top-ix.org/movies/sintel-1024-stereo.mp4")),
