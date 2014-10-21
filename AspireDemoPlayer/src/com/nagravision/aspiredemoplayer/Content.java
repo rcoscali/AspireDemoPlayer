@@ -20,7 +20,6 @@ import android.widget.GridView;
 public class Content extends Activity {
 	private static final String TAG = "Content";
 	private GridView mGridView = null;
-	private static final String MEDIA = "media";
 	private ImageAdapter mImageAdapter;
 	private DrmAgent mDrmAgent;
 
@@ -61,7 +60,12 @@ public class Content extends Activity {
 				mediaUri = ((URI)mImageAdapter.getItemUri(position)).toASCIIString();
 				
 				Intent i = null;
-
+				mDrmAgent = DrmAgent.getInstance();
+				if (mDrmAgent == null) 
+				{
+					DrmAgent.gCreateInstance(getApplicationContext());
+					mDrmAgent = DrmAgent.getInstance();
+				}
 				int rightsStatus = mDrmAgent.checkDrmInfoRights(contentId);
 				if(0 != rightsStatus){
 					// Sending to content purchaser
@@ -87,9 +91,9 @@ public class Content extends Activity {
 
 				if (i != null) {
 					// passing array index
-					i.putExtra("MEDIANAME", contentId);
-					i.putExtra("MEDIAURI", mediaUri);
-					i.putExtra(MEDIA, itemMedia);
+					i.putExtra(VideoPlayer.KEY_MEDIA_NAME, contentId);
+					i.putExtra(VideoPlayer.KEY_MEDIA_URI, mediaUri);
+					i.putExtra(VideoPlayer.KEY_MEDIA_MEDIA, itemMedia);
 					i.putExtra("position", position);
 					startActivity(i);
 				}

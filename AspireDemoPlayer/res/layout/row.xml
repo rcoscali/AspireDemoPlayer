@@ -1,13 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@drawable/nagravision"
+    android:fadingEdge="horizontal|vertical"
+    android:fadingEdgeLength="@dimen/abc_action_bar_default_height"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:scrollbarAlwaysDrawVerticalTrack="false" >
 
-    <SurfaceView android:id="@+id/surface"
+    <SurfaceView
+        android:id="@+id/surface"
         android:layout_width="fill_parent"
         android:layout_height="fill_parent"
-        android:layout_gravity="center">
+        android:layout_gravity="center"
+        android:scrollbarAlwaysDrawVerticalTrack="false" >
+
     </SurfaceView>
   
 </LinearLayout>

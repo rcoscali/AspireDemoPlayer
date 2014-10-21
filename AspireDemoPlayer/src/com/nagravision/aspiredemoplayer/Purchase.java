@@ -16,7 +16,6 @@ public class Purchase extends Activity {
 	private ImageAdapter mImageAdapter;
 	private int mPosition;
 	private DrmAgent mDrmAgent;
-	private static final String MEDIA = "media";
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
@@ -71,9 +70,9 @@ public class Purchase extends Activity {
 				}
 
 				if (null != intent) {
-					intent.putExtra("MEDIANAME", contentId);
-					intent.putExtra("MEDIAURI", mediaUri);
-					intent.putExtra(MEDIA, (ImageAdapter.Media) mImageAdapter.getItemMedia(mPosition));
+					intent.putExtra(VideoPlayer.KEY_MEDIA_NAME, contentId);
+					intent.putExtra(VideoPlayer.KEY_MEDIA_URI, mediaUri);
+					intent.putExtra(VideoPlayer.KEY_MEDIA_MEDIA, (ImageAdapter.Media) mImageAdapter.getItemMedia(mPosition));
 					startActivity(intent);
 				}
 			}

@@ -5,8 +5,8 @@
     android:versionName="1.0" >
 
     <uses-sdk
-        android:minSdkVersion="19"
-        android:targetSdkVersion="19" android:maxSdkVersion="21" />
+        android:minSdkVersion="18"
+        android:targetSdkVersion="18" android:maxSdkVersion="21" />
    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
@@ -31,8 +31,7 @@
         <activity android:name="AudioPlayer"></activity>
         <activity android:name="VideoPlayer"
                   android:theme="@style/Theme.Transparent"></activity>
-        <activity android:name="Content"
-                  android:theme="@style/Theme.Transparent"></activity>
+        <activity android:name="Content"></activity>
         <activity android:name="Purchase"
                   android:theme="@style/Theme.Transparent"></activity>
     </application>

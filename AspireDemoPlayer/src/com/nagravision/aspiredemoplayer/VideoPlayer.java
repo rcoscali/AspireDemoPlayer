@@ -1,7 +1,11 @@
 package com.nagravision.aspiredemoplayer;
 
+import java.io.FileDescriptor;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
@@ -9,6 +13,12 @@ import java.util.UUID;
 import com.nagravision.aspiredemoplayer.drm.DrmAgent;
 
 import android.app.Activity;
+import android.content.ContentResolver;
+import android.content.Intent;
+import android.content.res.AssetFileDescriptor;
+import android.graphics.Canvas;
+import android.graphics.PixelFormat;
+import android.graphics.Point;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
@@ -19,680 +29,1180 @@ import android.media.MediaCryptoException;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaMetadataRetriever;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
+import android.os.ParcelFileDescriptor;
 import android.util.Log;
-import android.util.SparseArray;
+import android.view.Display;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
-import android.graphics.Rect;
-import android.graphics.Canvas;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
+import android.widget.MediaController;
 
-public class VideoPlayer extends Activity implements SurfaceHolder.Callback {
+public class VideoPlayer extends Activity 
+	implements SurfaceHolder.Callback, MediaController.MediaPlayerControl {
 
-    private static final String TAG = "VideoPlayer";
-    private SurfaceView mPreview;
-    private SurfaceHolder mHolder;
-    private Bundle mExtras;
-    private static final String MEDIA = "media";
-    private String mVideoName = "";
-    private String mVideoUri = "";
-    private DrmAgent mDrmAgent = null;
-    private MediaMetadataRetriever mMetadataRetriever = null;
-    private int mWidth = 0;
-    private int mHeight = 0;
-    
-    MediaExtractor mExtractor = null;
-    PlayerThread mPlayerThread = null;
+	/* Values for supported/handled messages 'what' */
+	public static final int DO_RESIZE = 1;
+	public static final int DO_SECURE = 2;
+	public static final int DO_ADVANCE = 3;
+	public static final int DO_EOS = 4;
+	public static final int DO_METADATA = 5;
+	public static final int DO_STOP_PLAY = 7;
+	public static final int DO_SEEK_TO = 8;
 
-    public enum Media {
-        AUDIO, VIDEO
-    }
+	/* Values for SECURE message */
+	public static final int DO_SECURE_FALSE = 0;
+	public static final int DO_SECURE_TRUE = 1;
 
-    /**
-     * 
-     * Called when the activity is first created.
-     */
-    @Override
-    public void onCreate(Bundle xBundle) {
-        super.onCreate(xBundle);
-        setContentView(R.layout.row);
-        mPreview = (SurfaceView) findViewById(R.id.surface);
-        mHolder = mPreview.getHolder();
-        mHolder.addCallback(this);
-        mExtras = getIntent().getExtras();
-        mVideoName = (String) mExtras.getSerializable("MEDIANAME");
-        mVideoUri = (String) mExtras.getSerializable("MEDIAURI");
-        mExtractor = new MediaExtractor();
-        mMetadataRetriever = new MediaMetadataRetriever();
-        mMetadataRetriever.setDataSource(VideoPlayer.this.getBaseContext(), URI.create(mVideoUri));
-        mDrmAgent = DrmAgent.getInstance();
-    }
+	/* Keys values for Activity bundle, Intent bundle, Messages bundles and Metadata */
+	public static final String KEY_SAMPLE_TIME = "SAMPLE_TIME";
+	public static final String KEY_MEDIA_NAME = "MEDIANAME";
+	public static final String KEY_MEDIA_URI = "MEDIAURI";
+	public static final String KEY_DURATION = "DURATION";
+	public static final String KEY_CACHED_DURATION = "CACHED_DURATION";
+	public static final String KEY_IS_PLAYING = "IS_PLAYING";
+	public static final String KEY_MEDIA_MEDIA = "MEDIA";
+	
+	/* Supported mime types for tracks */
+	public static final String MIMETYPE_VIDEO_AVC = "video/avc";
+	public static final String MIMETYPE_AUDIO_MP4A = "audio/mp4a-latm";
+	
+	/* Debug tag */
+	private static final String TAG = "VideoPlayer";
+	
+	/* The surface view supporting video ion activity */
+	private SurfaceView mPreview;
+	
+	/* The surface holder (access to native surface) */
+	private SurfaceHolder mHolder;
+	
+	/* Intent bundle */
+	private Bundle mExtras;
 
-    private void playVideo(ImageAdapter.Media xMedia) {
-        try {
-            switch (xMedia) {
+	/* URI of the video obtained from Intent bundle */
+	private String mVideoUri = "";
+	
+	/* DrmAgent instance */
+	private DrmAgent mDrmAgent = null;
+	
+	/* Dimensions for screen & video */
+	private int mMaxWidth = 1280; // Some default guess
+	private int mMaxHeight = 800; // Some default guess
+	private int mWidth = 0;
+	private int mHeight = 0;
+	
+	/* Type (local/remote/audio/video/drm/nodrm) of media rendered */
+	private ImageAdapter.Media mMedia = ImageAdapter.Media.INVALID;
+	
+	/* Handler used for UI to receive msgs from rendering thread  */
+	final Handler mHandler = new PlayerThreadHandler();
+	
+	/* The thread that is in charge for rendering video */
+	PlayerThread mPlayerThread = null;
+	
+	/* Media controller providing access to trick modes */
+	private MediaController mMediaCtrlr = null;
+	
+	/* Interface with controller play/pause button */
+	private boolean mIsPlaying = false;
+	/* Total media duration in ms */
+	private long mDuration = 0;
+	/* Time of media cached */
+	private long mCacheDuration = 0;
+	/* Current sample time */
+	private long mSampleTime = 0;
 
-            case LOCAL_VIDEO:
-            case DRM_LOCAL_VIDEO:
-            case STREAM_VIDEO:
-            case DRM_STREAM_VIDEO:
-                mWidth = mMetadataRetriever.extractMetadata(mMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
-                mHeight = mMetadataRetriever.extractMetadata(mMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
-                startVideoPlayback();
-                break;
+	/**
+	 * 
+	 * Called when the activity is first created.
+	 */
+	@Override
+	public void onCreate(Bundle xBundle) 
+	{
+		super.onCreate(xBundle);
+		Thread.currentThread().setName("VideoPlayer UI thread");
+		// Get back state and times
+		if (xBundle != null)
+		{
+			mIsPlaying = xBundle.getBoolean(KEY_IS_PLAYING);
+			mDuration = xBundle.getLong(KEY_DURATION);
+			mCacheDuration = xBundle.getLong(KEY_CACHED_DURATION);
+			mSampleTime = xBundle.getLong(KEY_SAMPLE_TIME);
+		}
+		// Setup window manager
+	    //requestWindowFeature(Window.FEATURE_NO_TITLE|Window.FEATURE_ACTION_BAR|Window.FEATURE_ACTION_BAR_OVERLAY);
+	    // Add view to activity
+	    setContentView(R.layout.row);
+	    // Setup WindowManager flags for our window
+	    getWindow().setFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON, 
+	    		WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+	    // Get the view supporting the video
+		mPreview = (SurfaceView) findViewById(R.id.surface);
+		// Setup some of its visibility options
+        int uiOptions = View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+            /* View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |*/
+            /* View.SYSTEM_UI_FLAG_LAYOUT_STABLE |*/
+            View.SYSTEM_UI_FLAG_FULLSCREEN;
+        //if (Build.VERSION.SDK_INT >= 19)
+        //    uiOptions |= View.SYSTEM_UI_FLAG_IMMERSIVE;
+        mPreview.setSystemUiVisibility(uiOptions);
+        
+        // Get the surface holder (provided to the rendering thread)
+		mHolder = mPreview.getHolder();
+		// Manage its state in activity (created/destroyed/changed)
+		mHolder.addCallback(this);
+		// Get the intent bundle
+		mExtras = getIntent().getExtras();
+		// get the media URI
+		mVideoUri = (String) mExtras.getSerializable(KEY_MEDIA_URI);
+		// And the kind of media it is
+		mMedia = (ImageAdapter.Media) mExtras.getSerializable(KEY_MEDIA_MEDIA);
+		// Get DRM agent instance
+		mDrmAgent = DrmAgent.getInstance();
 
-            case LOCAL_AUDIO:
-            case DRM_LOCAL_AUDIO:
-            case STREAM_AUDIO:
-            case DRM_STREAM_AUDIO:
-                startAudioPlayback();
-                break;
+		// Get screen size & set default video size
+		Point size = new Point();
+		getWindowManager().getDefaultDisplay().getSize(size);
+		mMaxWidth = mWidth = size.x;
+		mMaxHeight = mHeight = size.y;
+		
+		// Instanciate the media controller
+	    mMediaCtrlr = new MediaController(this, true);
+	    // Set activity as the media player for this controller
+	    mMediaCtrlr.setMediaPlayer(this);
+	    // Set the SurfaceView as the view on which media controller is anchored
+	    mMediaCtrlr.setAnchorView(mPreview);
+	    // Setup listeners for next/prev media buttons
+	    mMediaCtrlr.setPrevNextListeners(
+	    		new View.OnClickListener() {
+					@Override
+					public void onClick(View v) {
+						Log.v(TAG, "Next listener of media controller");
+						// TODO: implem
+					}
+	    		}, 
+	    		new View.OnClickListener() {
+					@Override
+					public void onClick(View v) {
+						Log.v(TAG, "Prev listener of media controller");
+						// TODO: implem						
+					}
+	    		});
+	    // Enable the media controller
+	    mMediaCtrlr.setEnabled(true);
+	    /* Setup listeners that displays the media controllers
+	     * (basically click/move/hover on surface view and 
+	     * move/hover on media controller itself)
+	     */
+	    // OnClick listener for Surface view
+	    mPreview.setOnClickListener(
+	    		new View.OnClickListener() {
+					@Override
+					public void onClick(View v) {
+						mMediaCtrlr.show(5000);
+					}
+	    		});
+	    // Motion listener for Surface view
+	    mPreview.setOnGenericMotionListener(
+	    		new View.OnGenericMotionListener() {					
+					@Override
+					public boolean onGenericMotion(View v, MotionEvent event) {
+						mMediaCtrlr.show(2000);
+						return false;
+					}
+				});
+	    // Touch event listener for Surface view
+	    mPreview.setOnTouchListener(
+	    		new View.OnTouchListener() {					
+					@Override
+					public boolean onTouch(View v, MotionEvent event) {
+						mMediaCtrlr.show(2000);
+						return false;
+					}
+				});
+	    // HOver listener for Surface view
+//	    mPreview.setOnHoverListener(
+//	    		new View.OnHoverListener() {
+//					@Override
+//					public boolean onHover(View v, MotionEvent event) {
+//						mMediaCtrlr.show(2000);
+//						return false;
+//					}
+//				});
+	    // Motion listener for media controller
+	    mMediaCtrlr.setOnGenericMotionListener(
+	    		new View.OnGenericMotionListener() {					
+					@Override
+					public boolean onGenericMotion(View v, MotionEvent event) {
+						mMediaCtrlr.show(2000);
+						return false;
+					}
+				});
+	    // HOver listener for media controller
+//	    mMediaCtrlr.setOnHoverListener(
+//	    		new View.OnHoverListener() {
+//					@Override
+//					public boolean onHover(View v, MotionEvent event) {
+//						mMediaCtrlr.show(2000);
+//						return false;
+//					}
+//				});
+	}
 
-            default:
-                Log.e(TAG, "Unknown media type (" + xMedia + ") !!");
-                break;
-            }
+	/**
+	 * onBackPressed
+	 * 
+	 * Stop the thread player, release it and go back to main activity
+	 */
+	@Override
+	public void onBackPressed() {
+		Log.v(TAG, "Back pressed");
+		releaseMediaPlayer();
+		mPlayerThread = null;
+		onDestroy();
+		startActivity(new Intent(getApplicationContext(), MainActivity.class));
+	}
+	
+	/**
+	 * onKeyDown
+	 * 
+	 *  Stop the thread player, release it and go back to main activity
+	 *  when the back button is pressed down
+	 */
+//	@Override
+//	public boolean onKeyDown(int keyCode, KeyEvent event) {
+//	    if (keyCode == KeyEvent.KEYCODE_BACK)
+//            onBackPressed();
+//
+//	    return super.onKeyDown(keyCode, event);
+//	}
+	
+	/**
+	 * onKeyUp
+	 * 
+	 *  Stop the thread player, release it and go back to main activity
+	 *  when the back button is pressed up (sometimes the down event is 
+	 *  missed, because of the heavy thread activity ?)
+	 * 
+	 */
+	@Override
+	public boolean onKeyUp(int keyCode, KeyEvent event) {
+	    if (keyCode == KeyEvent.KEYCODE_BACK)
+            onBackPressed();
 
-        } catch (Exception xExcep) {
-            Log.e(TAG, "error: " + xExcep.getMessage(), xExcep);
-        }
-    }
+	    return super.onKeyUp(keyCode, event);
+	}
+	
+	/*
+	 * surfaceChanged listener
+	 * 
+	 * Called when surface properties changed (Video view is modified on the screen)
+	 */
+	@Override
+	public void surfaceChanged(SurfaceHolder surfaceholder, int i, int j, int k) {
+		// Set video size 
+		mHolder.setFixedSize(mWidth, mHeight);
+		// And start media playback
+		startMediaPlayback();
+	}
 
-    @Override
-    public void surfaceChanged(SurfaceHolder surfaceholder, int i, int j, int k) {
-        Log.d(TAG, "surfaceChanged called");
+	/*
+	 * surfaceDestroyed listener
+	 * 
+	 * Called when surface is destroyed (Video view is removed from screen)
+	 */
+	@Override
+	public void surfaceDestroyed(SurfaceHolder surfaceholder) {
+	}
 
-        Rect theRect = this.mHolder.getSurfaceFrame(); 
-        this.mHolder.setFixedSize(Rect.width(), (mHeight * Rect.width()) / mWidth);
-        playVideo((ImageAdapter.Media) mExtras.getSerializable(MEDIA));
-    }
+	/*
+	 * surfaceCreated listener
+	 * 
+	 * Called when surface is crated (Video view is about to be displayed on screen)
+	 */
+	@Override
+	public void surfaceCreated(SurfaceHolder holder) {
+		// Setup Surface View
+		mPreview.setZOrderMediaOverlay(true);
+		// And the Surface Holder
+		mHolder.setKeepScreenOn(true);
+		mHolder.setFormat(PixelFormat.TRANSLUCENT);
+		mHolder.setFixedSize(mWidth, mHeight);
+	}
 
-    @Override
-    public void surfaceDestroyed(SurfaceHolder surfaceholder) {
-        Log.d(TAG, "surfaceDestroyed called");
-    }
+	/*
+	 * onPause listener
+	 * 
+	 * Called when the activity is paused
+	 */
+	@Override
+	protected void onPause() {
+		// Do pause
+		super.onPause();
+		// Release resources held by player
+		releaseMediaPlayer();
+	}
 
-    @Override
-    public void surfaceCreated(SurfaceHolder holder) {
-        Log.d(TAG, "surfaceCreated called");
+	/*
+	 * onDestroy listener
+	 * 
+	 * Called when the activity is destroyed
+	 */
+	@Override
+	protected void onDestroy() {
+		// Release player resources
+		releaseMediaPlayer();
+		// And destroy activity
+		super.onDestroy();
+	}
 
-    }
+	/*
+	 * onSaveInstanceState listener
+	 * 
+	 * Called when activity state changes and it is required to 
+	 * be saved for further restoration
+	 */
+	@Override
+	public void onSaveInstanceState(Bundle xBundle) {
+		// Let super class to also save its state
+		super.onSaveInstanceState(xBundle);
+		// Save important flags & values
+		xBundle.putBoolean(KEY_IS_PLAYING, mIsPlaying);
+		xBundle.putLong(KEY_DURATION, mDuration);
+		xBundle.putLong(KEY_CACHED_DURATION, mCacheDuration);
+		xBundle.putLong(KEY_SAMPLE_TIME, mSampleTime);
+	}
+	
+	/*
+	 * onRestoreInstanceState listener
+	 * 
+	 * Called when activity state changes and it is required to 
+	 * restore for recalling a specific state
+	 */
+	@Override
+	public void onRestoreInstanceState(Bundle xBundle) {
+		// Let super class restore its own state
+		super.onRestoreInstanceState(xBundle);
+		// Then restore our important flags & values
+		mIsPlaying = xBundle.getBoolean(KEY_IS_PLAYING);
+		mDuration = xBundle.getLong(KEY_DURATION);
+		mCacheDuration = xBundle.getLong(KEY_CACHED_DURATION);
+		mSampleTime = xBundle.getLong(KEY_SAMPLE_TIME);
+	}
+	
+	/*
+	 * releaseMediaPlayer
+	 * 
+	 * Clean exit for player thread and remove ref on it (GC can then collect it)
+	 */
+	private void releaseMediaPlayer() 
+	{
+		try 
+		{
+			if (null != this.mPlayerThread) 
+			{
+				stopStream();
+				mPlayerThread.interrupt();
+				mPlayerThread.join(500);
+				mPlayerThread = null;
+			}
+		} 
+		catch (InterruptedException e) 
+		{
+			Log.v(TAG, "Player Thread interrupted !!");
+		}
+	}
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        releaseMediaPlayer();
-    }
+	/*
+	 * startMediaPlayback
+	 * 
+	 * Start playing a media which ref was provided in Intent
+	 */
+	private void startMediaPlayback() 
+	{
+		if (mPlayerThread == null) {
+			mPlayerThread = new PlayerThread(mHolder.getSurface());
+			mPlayerThread.setDataSource(mVideoUri);
+			mPlayerThread.start();
+		}
+	}
 
-    @Override
-    protected void onDestroy() {
-        releaseMediaPlayer();
-        super.onDestroy();
-    }
+	/*
+	 * PlayerThreadHandler class
+	 * 
+	 * This class provides implementation for handleMessage in order 
+	 * to receive states and values from player rendering thread
+	 */
+	private class PlayerThreadHandler extends Handler 
+	{
+		public PlayerThreadHandler() 
+		{
+			super(Looper.getMainLooper());
+			Log.v(TAG, "PlayerThreadHandler is thread: " + Thread.currentThread().getName());
+		}
+		
+		@Override
+		public void handleMessage(Message inMsg) 
+		{
+			//PlayerThread aPlayerThread = (PlayerThread)inMsg.obj;
+			switch(inMsg.what)
+			{
+			case DO_RESIZE:
+				// We just got the video size from its metadata and then need to resize view
+				Log.i(TAG, "width=" + inMsg.arg1 + " height=" + inMsg.arg2);
+				int width = inMsg.arg1;
+				int height = inMsg.arg2;
+				int rectWidth = mPreview.getWidth();
+				int rectHeight = mPreview.getHeight();
+				Log.i(TAG, "cur width=" + rectWidth + " cur height=" + rectHeight);
+				if (height != rectHeight)
+				{
+					mWidth = mMaxWidth;
+					mHeight = (height * mMaxWidth) / width;
+					Log.i(TAG, "Setting new size: (" + mWidth + "," + mHeight + ")");
+					VideoPlayer.this.mHolder.setFixedSize(mWidth, mHeight);
+				}
+				break;
+				
+			case DO_SECURE:
+				// We are actually deciphering a ciphered media: go secure to
+				// avoid SurfaceView screenshot
+				Log.i(TAG, "Going to secure ...");
+				VideoPlayer.this.mPreview.setSecure(inMsg.arg1 == DO_SECURE_TRUE ? true : false);
+				break;
 
-    private void releaseMediaPlayer() {
+			case DO_ADVANCE:
+				// We just processed one more sample, set new current time
+				mSampleTime = inMsg.getData().getLong(KEY_SAMPLE_TIME) / 1000;
+				mIsPlaying = true;
+				//Log.v(TAG, "Sample time = " + String.format("%02.2f s", mSampleTime / 1000000.0));
+				break;
 
-        try {
-            if (null != this.mPlayerThread) {
-                mPlayerThread.interrupt(); // doesn't seem to work
-                mPlayerThread.stopStream();// hack to make it work
-                mPlayerThread.join(1000); // wait a second
-                if (mPlayerThread.isAlive()) {
-                    Log.e(TAG, "Serious problem with player thread!");
+			case DO_EOS:
+				// We reached end of stream: update state flags
+				Log.i(TAG, "End of stream ...");
+				mIsPlaying = false;
+				break;
+
+			case DO_METADATA:
+				// We found some important metadata: store values
+				Log.i(TAG, "Got metadata ...");
+				mDuration = inMsg.getData().getLong(KEY_DURATION);
+				break;
+
+			case DO_STOP_PLAY:
+				// User just stopped playing... or what else
+				Log.i(TAG, "Stop play ...");
+				mIsPlaying = false;
+				break;
+
+			case DO_SEEK_TO:
+				// a Trick mode was used
+				Log.i(TAG, "Seek to " + inMsg.arg1 + "...");
+				if (mIsPlaying)
+				{
+					pause();
+					mPlayerThread.seekTo(inMsg.arg1);
+					start();
+				}
+				else {
+					mPlayerThread.seekTo(inMsg.arg1);
+				}
+			}
+		}		
+	}
+	
+	/*
+	 * PlayerThread class
+	 * 
+	 * This is the class providing the media rendering
+	 */
+	private class PlayerThread extends Thread 
+	{
+		// The media extractor (a.k.a. demux)
+		private MediaExtractor mExtractor;
+		// The metadata retriever used for getting metadata values (duration)
+		private MediaMetadataRetriever mMetadataRetr = null;
+		// All media codecs used for tracks of this media
+		private MediaCodec[] mMediaCodec;
+		// The low level surface used for rendering video frames
+		private Surface mSurface;
+		// The media datasource (file path or url)
+		private String mDataSource;
+		// The media crypto object used for deciphering packets/fragments
+		MediaCrypto mMediaCrypto = null;
+		
+		/*
+		 * Some flags used in player state management
+		 */
+		// Used for synchronization
+		private final Object mStopLock = new Object();
+		// Stream does not advance anymore
+		private volatile boolean mStopStream = false;
+		// Stream pause was requested
+		private volatile boolean mPauseStreamRequested = false;
+		// Stream un-pause was requested
+		private volatile boolean mUnPauseStreamRequested = false;
+		// Stream is paused (resources are not released for allowing quick restart)
+		private volatile boolean mPauseStream = false;
+		// Pause was notified through message (to avoid sending message continuously)
+		private volatile boolean mPauseNotified = false;
+		// We reached en of stream
+		volatile boolean mIsEndOfStream;
+		// The stream needs to be secured or not
+		volatile boolean mSecured = false;
+		
+		// Time we want to seek to (in micro seconds)
+		private long mSeekToTimeUs = -1;
+		// Crypto infos (about how content is protected)
+		MediaCodec.CryptoInfo mCryptoInfo = new MediaCodec.CryptoInfo();
+		// Android Time (in ms) when playing was started
+		long mStartMs = 0;
+		// The PSSH data found in media when ciphered (TODO: which one if several are available???)
+		String mPsshData;
+		// Rendering buffers used for deciphering/decoding content
+		RenderingBuffers[] mBuffers;
+		// The rendered audio track
+		AudioTrack mAudioTrack;
+		// Buffers timeout value in µs
+		private final long TIME_OUT_MICRO_SECS = 10000000;
+		// Number of tracks available in media
+		private int mNumTracks = 0;
+		// The main video track rendered (one used for timing others)
+		private int mMainTrack = 0;
+		// Media formats (one per track)
+		private MediaFormat[] mFormat;
+		
+		private long mPauseStarted = 0;
+
+		// Public constructor
+		public PlayerThread(Surface xSurface) 
+		{
+			// Store the low level surface provided by activity
+			this.mSurface = xSurface;
+		}
+
+		// Activity requests to seek at a specific position
+		public void seekTo(int pos) {
+			// Set time value in µs
+			mSeekToTimeUs = pos * 1000;
+			for (int i = 0; i < mNumTracks; ++i) 
+			{
+				if (mMediaCodec[i] != null)
+					mMediaCodec[i].flush();
+			}
+		}
+
+		// The thread implementation
+		@Override
+		public void run() 
+		{
+			// Infinite loop
+			while (true)
+				// Check if we got a source for data
+				if (!this.mDataSource.equals("")) 
+				{
+					// Play the content
+					try 
+					{
+						playContent();
+					}
+					catch (InterruptedException e) 
+					{
+						Log.v(TAG, "Player thread stopped");
+					}
+
+					// Stream was stopped. Thread will RIP
+					if (mStopStream || mIsEndOfStream) 
+					{
+						for (int i = 0; i < mNumTracks; ++i) 
+						{
+							if (mMediaCodec[i] != null)
+							{
+								mMediaCodec[i].stop();
+								mMediaCodec[i].release();
+								mMediaCodec[i] = null;
+							}						
+							if (mMediaCodec[i] != null)
+								mBuffers[i] = null;
+						}
+
+						mExtractor.release();
+						mMediaCodec = null;
+						mExtractor = null;
+						mBuffers = null;
+
+						break;
+					}
+					// Stream was paused, Thread goes on
+					else if (mPauseStreamRequested)
+					{
+						synchronized(mStopLock)
+						{
+							// Keep resources, we will start again soon
+							mPauseStreamRequested = false;
+							mPauseStream = true;
+							mStopLock.notifyAll();
+						}
+						
+						mPauseStarted = System.currentTimeMillis();
+						// Wait and check at some regular interval if
+						// start was requested
+						while (!mUnPauseStreamRequested)
+							try 
+							{
+								// Wait for play
+								Thread.sleep(100);
+							} 
+							catch (InterruptedException e) 
+							{
+								Log.v(TAG, "Rendering paused interrupted...");
+							}
+						
+						synchronized(mStopLock)
+						{
+							mPauseStream = false;
+							mUnPauseStreamRequested = false;
+							mStopLock.notifyAll();
+						}
+					}
+
+				} 
+				else 
+					Log.v(TAG, "No Media Uri Call setDataSource() before thread start()");				
+
+		}
+
+		// Set data source for media
+		public void setDataSource(String xDataSource) 
+		{
+			this.mDataSource = xDataSource;
+			Log.v(TAG, "Media Uri: " + this.mDataSource);
+		}
+
+		// Do play the media content
+		private void playContent() throws InterruptedException 
+		{
+			try 
+			{
+//				mAudioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, 44100,
+//						AudioFormat.CHANNEL_OUT_STEREO,
+//						AudioFormat.ENCODING_PCM_16BIT, 8192 * 2,
+//						AudioTrack.MODE_STATIC);
+				if (mExtractor == null)
+				{
+					mExtractor = new MediaExtractor();
+					mExtractor.setDataSource(mDataSource);
+					if (mDuration == 0)
+					{
+						try
+						{
+							mMetadataRetr = new MediaMetadataRetriever();
+							URI uri = URI.create(mDataSource);
+							if (VideoPlayer.this.mMedia.equals(ImageAdapter.Media.DRM_STREAM_AUDIO) ||
+									VideoPlayer.this.mMedia.equals(ImageAdapter.Media.DRM_STREAM_VIDEO) ||
+									VideoPlayer.this.mMedia.equals(ImageAdapter.Media.STREAM_AUDIO) ||
+									VideoPlayer.this.mMedia.equals(ImageAdapter.Media.STREAM_VIDEO))
+							{
+								Map<String, String> headers = new HashMap<String, String>();
+								headers.put("Pragma", "none"); // Have to provide one header else JNI raise exception
+								mMetadataRetr.setDataSource(uri.toASCIIString(), headers);
+							}
+							else
+								mMetadataRetr.setDataSource(uri.getPath());
+							mDuration = Long.parseLong(mMetadataRetr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
+							mMetadataRetr = null;							
+						}
+						catch (Exception e)
+						{
+							Log.e(TAG, "Metadata retrieving failed", e);
+						}
+
+						Message aMsg1 = VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_METADATA);
+						aMsg1.getData().putLong(KEY_DURATION, mDuration);
+						aMsg1.sendToTarget();
+					}
+
+					mNumTracks = mExtractor.getTrackCount();
+					Log.v(TAG, "Number of tracks: " + mNumTracks);
+
+					mBuffers = new RenderingBuffers[mNumTracks];
+					mMediaCodec = new MediaCodec[mNumTracks];
+					mFormat = new MediaFormat[mNumTracks];
+
+					for (int i = 0; i < mNumTracks; ++i) 
+					{
+						mFormat[i] = mExtractor.getTrackFormat(i);
+						String mime = mFormat[i].getString(MediaFormat.KEY_MIME);
+						Log.v(TAG, "Track[" + i + "].mime = " + mime);
+						
+						//
+						// A Video track
+						//
+						if (mime.equals(MIMETYPE_VIDEO_AVC)) {
+							mMainTrack = i;
+							mExtractor.selectTrack(i);
+							// Got metadata from media ?
+							if (mFormat[i].containsKey(MediaFormat.KEY_HEIGHT) && 
+									mFormat[i].containsKey(MediaFormat.KEY_WIDTH))
+							{
+								// Yes: send back to UI thread
+								int aWidth = mFormat[i].getInteger(MediaFormat.KEY_WIDTH);
+								int aHeight = mFormat[i].getInteger(MediaFormat.KEY_HEIGHT);
+								VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_RESIZE, aWidth, aHeight, this).sendToTarget();
+							}
+
+							mMediaCodec[i] = MediaCodec.createDecoderByType(mime);
+							Map<UUID, byte[]> psshInfo = mExtractor.getPsshInfo();
+							if (null != psshInfo) {
+								for (Iterator<UUID> it = psshInfo.keySet()
+										.iterator(); it.hasNext();) {
+									UUID uuid = it.next();
+									if (MediaCrypto.isCryptoSchemeSupported(uuid)) {
+										Log.v(TAG, "Supported crypto scheme");
+										mPsshData = new String(psshInfo.get(uuid));
+										Log.v(TAG,
+												"PSSH for UUID: " + uuid.toString()
+												+ " has data :" + mPsshData);
+
+										mMediaCrypto = new MediaCrypto(uuid, psshInfo.get(uuid));
+
+										mSecured = true;
+										break;
+									}
+								}
+							}
+
+							// Tell UI about secure or not
+							VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_SECURE, 
+									mSecured ? VideoPlayer.DO_SECURE_TRUE : VideoPlayer.DO_SECURE_FALSE, 
+											0, this).sendToTarget();
+
+							mMediaCodec[i].configure(mFormat[i], mSurface, mMediaCrypto, 0);
+
+							if (!mSecured)
+								Log.v(TAG, "Unsupported crypto scheme");
+						}
+
+						//
+						// An audio track
+						//
+//						if (mime.equals(MIMETYPE_AUDIO_MP4A)) 
+//						{
+//							mMediaCodec[i] = MediaCodec.createDecoderByType(mime);
+//							mMediaCodec[i].configure(mFormat[i], null, mMediaCrypto, 0);
+//						}
+					}
+					for (int i = 0; i < mNumTracks; ++i) 
+					{
+						if (mMediaCodec[i] != null) 
+						{
+							mMediaCodec[i].start();
+							mBuffers[i] = new RenderingBuffers();
+							mBuffers[i].mInputBuffers = mMediaCodec[i].getInputBuffers();
+							mBuffers[i].mOutputBuffers = mMediaCodec[i].getOutputBuffers();
+							mBuffers[i].mBufferInfo = new BufferInfo();
+						}
+					}
+				}
+				// We paused, then we restart
+				else
+				{
+					if (mSeekToTimeUs != -1) {
+						mExtractor.seekTo(mSeekToTimeUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+						mStartMs += mSampleTime - (mSeekToTimeUs / 1000);
+						mSeekToTimeUs = -1;
+					}
+				}
+				
+				mIsEndOfStream = false;
+				mStartMs += System.currentTimeMillis() - mPauseStarted;
+				while (true) 
+				{
+					
+					mCacheDuration = mExtractor.getCachedDuration() / 1000;
+					if (isInterrupted())
+					{
+						mStopStream = true;
+						break;
+					}
+
+					if (mStopStream || mPauseStreamRequested)
+					{
+						if (mPauseStreamRequested) {
+							mSeekToTimeUs = mExtractor.getSampleTime();
+							Message aMsg7 = VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_ADVANCE, this);
+							aMsg7.getData().putLong(VideoPlayer.KEY_SAMPLE_TIME, mSeekToTimeUs);
+							aMsg7.sendToTarget();
+						}
+						break;
+					}
+ 
+					if (renderVideo(mMainTrack))
+					{
+						mStopStream = true;
+						break;
+					}
+					
+					/*if (renderAudio(1)) {
+						continue;
+					}*/
+				}
+
+			} 
+			catch (IOException e) 
+			{
+				e.printStackTrace();
+			}
+			catch (MediaCryptoException e) 
+			{
+				Log.e(TAG, "Could not instanciate MediaCrypto ! " + e);
+			}
+			VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_STOP_PLAY).sendToTarget();
+		}
+
+		private void inputBuffer(int xtrack) 
+		{
+			mExtractor.selectTrack(xtrack);
+			int inputBufferIndex = mMediaCodec[xtrack]
+					.dequeueInputBuffer(TIME_OUT_MICRO_SECS);
+			if (inputBufferIndex >= 0) 
+			{
+				ByteBuffer buffer = mBuffers[xtrack].mInputBuffers[inputBufferIndex];
+				int sampleSize = mExtractor.readSampleData(buffer, 0);
+				if (sampleSize < 0) {
+					Log.v(TAG, "InputBuffer BUFFER_FLAG_END_OF_STREAM\n");
+					mMediaCodec[xtrack].queueInputBuffer(inputBufferIndex, 0,
+							0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+					// Tell UI about EOS
+					VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_EOS, this).sendToTarget();
+				} 
+				else 
+				{
+					mExtractor.getSampleCryptoInfo(mCryptoInfo);
+
+					if (mCryptoInfo.mode == MediaCodec.CRYPTO_MODE_UNENCRYPTED) 
+					{
+						mMediaCodec[xtrack].queueInputBuffer(inputBufferIndex,
+								0, sampleSize, mExtractor.getSampleTime(), 0);
+					} 
+					else 
+					{
+						mCryptoInfo.key = mDrmAgent.provideKey(mPsshData);
+						
+						mMediaCodec[xtrack].queueSecureInputBuffer(
+								inputBufferIndex, 0, mCryptoInfo,
+								mExtractor.getSampleTime(), mCryptoInfo.mode);
+					}
+					mExtractor.advance();
+				}
+			}
+		}
+
+		private int outputBuffer(int xtrack) 
+		{
+			int outIndex = mMediaCodec[xtrack].dequeueOutputBuffer(mBuffers[xtrack].mBufferInfo, TIME_OUT_MICRO_SECS);
+			
+			switch (outIndex)
+			{
+			case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
+				// not important for us, since we're using Surface
+				Log.v(TAG, "INFO_OUTPUT_BUFFERS_CHANGED\n");
+				mBuffers[xtrack].mOutputBuffers = mMediaCodec[xtrack].getOutputBuffers();
+				break;
+				
+			case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
+				mFormat[xtrack] = mMediaCodec[xtrack].getOutputFormat();
+				Log.v(TAG,
+						"INFO_OUTPUT_FORMAT_CHANGED "
+								+ mFormat[xtrack]);
+				if (mFormat[xtrack].containsKey(MediaFormat.KEY_HEIGHT) && 
+						mFormat[xtrack].containsKey(MediaFormat.KEY_WIDTH))
+				{
+					// Yes: send back to UI thread
+					int aWidth = mFormat[xtrack].getInteger(MediaFormat.KEY_WIDTH);
+					int aHeight = mFormat[xtrack].getInteger(MediaFormat.KEY_HEIGHT);
+					VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_RESIZE, aWidth, aHeight, this).sendToTarget();
+				}
+				break;
+				
+			case MediaCodec.INFO_TRY_AGAIN_LATER:
+				Log.v(TAG, "INFO_TRY_AGAIN_LATER decoder timmed out");
+				break;
+
+				default:
+				if (outIndex < 0)
+					throw new RuntimeException(
+	                        "unexpected result from mMediaCodec[xtrack].dequeueOutputBuffer: " +
+	                                outIndex);
+				break;
+				
+			}
+
+			return outIndex;
+		}
+
+		private boolean renderVideo(int xTrack) 
+		{
+			if (!mPauseStreamRequested && !mPauseStream)
+			{
+				int outIndex = -1;
+				inputBuffer(xTrack);
+				outIndex = outputBuffer(xTrack);
+				if (outIndex >= 0)
+				{
+					while (mBuffers[xTrack].mBufferInfo.presentationTimeUs / 1000 > 
+							System.currentTimeMillis() - mStartMs && 
+							!(mPauseStreamRequested || mPauseStream)) 
+					{
+						try 
+						{
+							sleep(4);
+						} 
+						catch (InterruptedException e) 
+						{
+							e.printStackTrace();
+							break;
+						}
+					}
+					mMediaCodec[xTrack].releaseOutputBuffer(outIndex, true);
+				}
+
+				// All decoded frames have been rendered
+				if ((mBuffers[xTrack].mBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) 
+				{
+					Log.v(TAG, "outputBuffers BUFFER_FLAG_END_OF_STREAM");
+					mIsEndOfStream = true;
+					// Tell UI about EOS
+					VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_EOS, this).sendToTarget();
+				}
+				else 
+				{
+					// Tell UI about advance
+					Message aMsg7 = VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_ADVANCE, this);
+					aMsg7.getData().putLong(VideoPlayer.KEY_SAMPLE_TIME, mBuffers[xTrack].mBufferInfo.presentationTimeUs);
+					aMsg7.sendToTarget();				
+				}
+			} 
+
+			return mIsEndOfStream;
+		}
+
+//		private boolean renderAudio(int xTrack) 
+//		{
+//			inputBuffer(xTrack);
+//			int outIndex = outputBuffer(xTrack);
+//			if(outIndex >= 0)
+//			{
+//				ByteBuffer buffer = mBuffers[xTrack].mOutputBuffers[outIndex];
+//				final byte[] chunk = new byte[mBuffers[xTrack].mBufferInfo.size];
+//				buffer.get(chunk);
+//				buffer.clear();
+//				mAudioTrack.play();
+//				if(chunk.length > 0)
+//					mAudioTrack.write(chunk, 0, chunk.length);
+//				
+//				mMediaCodec[xTrack].releaseOutputBuffer(outIndex, false);
+//			}
+//
+//			return false;
+//		}
+
+        /**
+         * Wait for the player to be paused.
+         * <p>
+         * Called from any thread other than the PlayTask thread.
+         */
+        public void waitForPaused() {
+        	if (Thread.currentThread().equals(mPlayerThread))
+        	{
+        		Log.v(TAG, "waitForPaused(): will not wait for me !!");
+        		return;
+        	}
+            synchronized (mStopLock) {
+                while (!mPauseStream) {
+                    try {
+                        mStopLock.wait();
+                    } catch (InterruptedException ie) {
+                        // discard
+                    }
                 }
-                mPlayerThread = null;
             }
-
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
-    }
-
-    private void startVideoPlayback() {
-        Log.v(TAG, "startVideoPlayback");
-        if (null == mPlayerThread) {
-            mPlayerThread = new PlayerThread(mHolder.getSurface());
-            mPlayerThread.setDataSource(mVideoUri);
-            try {
-                mPlayerThread.renderAudioVideo();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private void startAudioPlayback() {
-        Log.v(TAG, "startVideoPlayback");
-        if (null == mPlayerThread) {
-            // mHolder.getSurface()
-            VideoPlayer.this.getBaseContext().getResources().getDrawable(R.drawable.audio_player_background).draw(mHolder.lockCanvas());
-            mHolder.unlockCanvasAndPost();
-            mPlayerThread = new PlayerThread(null);
-            mPlayerThread.setDataSource(mVideoUri);
-            try {
-                mPlayerThread.renderAudioVideo();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private class PlayerThread extends Thread {
-        MediaExtractor mExtractor;
-        private Surface mSurface;
-        private String mDataSource;
-        private boolean mStopStream = false;
-        MediaCodec.CryptoInfo mCryptoInfo = new MediaCodec.CryptoInfo();
-        long mStartMs;
-        String mPsshData;
-        AudioTrack mAudioTrack;
-        private final long TIME_OUT_MICRO_SECS = 1000000;
-        SparseArray<RenderObject> mRenderObjects = new SparseArray<RenderObject>();
-
-        public PlayerThread(Surface xSurface) {
-            this.mSurface = xSurface;
-        }
-
-        public void stopStream() {
-            this.mStopStream = true;
-        }
-
-        @Override
-        public void run() {
-            if (!this.mDataSource.equals("")) {
-                try {
-                    renderAudioVideo();
-
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            } else {
-                Log.v(TAG,
-                      "No Media Uri Call setDataSource() before thread start()");
-            }
-        }
-
-        public void setDataSource(String xDataSource) {
-            this.mDataSource = xDataSource;
-            Log.v(TAG, "Media Uri: " + this.mDataSource);
         }
 
         /**
-         * @brief
-         * 
-         *        Make a render object for each track
-         * 
+         * Wait for the player to play.
+         * <p>
+         * Called from any thread other than the PlayTask thread.
          */
-        private void createRenderObjects() {
-            try {
-                // set up main extractor
-                mExtractor = new MediaExtractor();
-                mExtractor.setDataSource(mDataSource);
-                int numTracks = mExtractor.getTrackCount();
-                Log.v(TAG, "Number of tracks: " + numTracks);
-
-                for (int i = 0; i < numTracks; i++) {
-                    MediaFormat format = mExtractor.getTrackFormat(i);
-                    String mime = format.getString(MediaFormat.KEY_MIME);
-                    Log.v(TAG, "Track[" + i + "].mime = " + mime);
-
-                    RenderObject renderObject = null;
-                    if (mime.equals("video/avc")) {
-                        renderObject = new VideoRenderObject();
-                    } else if (mime.equals("audio/mp4a-latm")) {
-                        renderObject = new AudioRenderObject();
-                    }
-
-                    this.mExtractor.selectTrack(i);
-
-                    if (null != renderObject) {
-                        renderObject.mMediaExtractor = mExtractor;
-                        renderObject.mRenderingBuffers = new RenderingBuffers();
-                        renderObject.mFormat = format;
-                        renderObject.mTrackId = i;
-                        renderObject.initializeObject(mime);
-                        mRenderObjects.put(i, renderObject);
-                    }
-
-                }
-
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
-        private void renderAudioVideo() throws InterruptedException {
-
-            // create on render object per track in the data source
-            createRenderObjects();
-
-            int numTracks = 1;//mRenderObjects.size();
-
-            for (int i = 0; i < numTracks; i++) {
-
-                // get a tracks render object
-                RenderObject renderObject = (RenderObject) mRenderObjects
-                    .get(mRenderObjects.keyAt(i));
-
-                // start the decoder for the track
-                renderObject.startDecoder();
-
-                // start the audio and video render thread
-                if (renderObject.mMedia == Media.VIDEO) {
-                    renderObject.mRenderThread = new VideoPlayerThread(this,
-                                                                       renderObject);
-                    new Thread(renderObject.mRenderThread, "Video Thread")
-                        .start();
-                } else if (renderObject.mMedia == Media.AUDIO) {
-                    renderObject.mRenderThread = new AudioPlayerThread(this,
-                                                                       renderObject);
-                    new Thread(renderObject.mRenderThread, "Audio Thread")
-                        .start();
-                }
-            }
-
-            mStartMs = System.currentTimeMillis();
-
-            for (int i = 0; i < numTracks; i++) {
-                // get a tracks render object
-                RenderObject renderObject = (RenderObject) mRenderObjects
-                    .get(mRenderObjects.keyAt(i));
-                renderObject.mRenderThread.startThread();
-            }
-
-            // select the first track
-            int track = 0;
-            this.mExtractor.selectTrack(track);
-
-            for (;;) {
-                if (isInterrupted()) {
-                    break;
-                }
-
-                if (mStopStream) {
-                    for (int i = 0; i < numTracks; i++) {
-                        // get a tracks render object
-                        RenderObject renderObject = (RenderObject) mRenderObjects
-                            .get(mRenderObjects.keyAt(i));
-                        renderObject.mRenderThread.stopThread();
-                    }
-                    break;
-                }
-
-                boolean isStopped = true;
-                for (int i = 0; i < numTracks; i++) {
-                    // get a tracks render object
-                    RenderObject renderObject = (RenderObject) mRenderObjects
-                        .get(mRenderObjects.keyAt(i));
-                    isStopped = isStopped
-                        && renderObject.mRenderThread.isStopped();
-                }
-
-                if (isStopped) {
-                    break;
-                }
-
-                RenderObject renderObject = (RenderObject) mRenderObjects
-                    .get(mRenderObjects.keyAt(track));
-
-                track = enqueue(renderObject);
-
-
-            }
-
-            releaseAll();
-        }
-
-        private void releaseAll() {
-            for (int i = 0; i < mRenderObjects.size(); ++i) {
-
-                RenderObject renderObject = (RenderObject) mRenderObjects
-                    .get(mRenderObjects.keyAt(i));
-                renderObject.startDecoder();
-
-                if (renderObject.mMediaCodec != null) {
-                    renderObject.mMediaCodec.stop();
-                    renderObject.mMediaCodec.release();
-                    renderObject.mMediaCodec = null;
-                }
-
-                if (renderObject.mRenderingBuffers != null) {
-                    renderObject.mRenderingBuffers = null;
-                }
-
-                renderObject.mRenderingBuffers = null;
-                renderObject.mMediaExtractor.release();
-                renderObject.mMediaExtractor = null;
-                renderObject = null;
-            }
-
-            mRenderObjects.clear();
-        }
-
-        /**
-         * @brief enqueue data
-         * 
-         * @param xRenderObject
-         *            The render object to enqueue to
-         * 
-         * @return The next track
-         */
-        public int enqueue(RenderObject xRenderObject) {
-
-            if (xRenderObject.mTrackId == mExtractor.getSampleTrackIndex()) {
-                int inputBufferIndex = xRenderObject.mMediaCodec
-                    .dequeueInputBuffer(TIME_OUT_MICRO_SECS);
-                if (inputBufferIndex >= 0) {
-                    ByteBuffer buffer = xRenderObject.mRenderingBuffers.mInputBuffers[inputBufferIndex];
-                    buffer.clear();
-                    // xRenderObject.mOffset = buffer.position();
-                    int sampleSize = mExtractor.readSampleData(buffer,
-                                                               xRenderObject.mOffset);
-                    // buffer.position(xRenderObject.mOffset + sampleSize);
-
-                    Log.v(TAG, "Read data from extractor (and crypto) track "
-                          + xRenderObject.mTrackId
-                          + " and provide to decoder sample size "
-                          + sampleSize + "\n");
-                    if (sampleSize < 0) {
-                        Log.v(TAG,
-                              "Enqueue InputBuffer BUFFER_FLAG_END_OF_STREAM\n");
-                        xRenderObject.mMediaCodec.queueInputBuffer(
-                                                                   inputBufferIndex, 0, 0, 0,
-                                                                   MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                    } else {
-                        mExtractor.getSampleCryptoInfo(mCryptoInfo);
-                        if (mCryptoInfo.mode == MediaCodec.CRYPTO_MODE_UNENCRYPTED) {
-                            Log.v(TAG, "Enqueue clear data .....");
-                            xRenderObject.mMediaCodec.queueInputBuffer(
-                                                                       inputBufferIndex, 0, sampleSize,
-                                                                       mExtractor.getSampleTime(), 0);
-                            Log.v(TAG, "..... clear data enqueued");
-                        } else {
-                            Log.v(TAG, "Enqueue encrypted data .....");
-                            mCryptoInfo.key = mDrmAgent.provideKey(mPsshData);
-
-                            xRenderObject.mMediaCodec.queueSecureInputBuffer(
-                                                                             inputBufferIndex, 0, mCryptoInfo,
-                                                                             mExtractor.getSampleTime(),
-                                                                             mCryptoInfo.mode);
-                            Log.v(TAG, "Encrypted data enqueued");
-                        }
-                        if (!mExtractor.advance()) {
-                            Log.v(TAG, "No more samples\n");
-                        }
-                    }
-                }
-            }
-
-            return mExtractor.getSampleTrackIndex();
-        }
-
-        private class RenderingBuffers {
-            public ByteBuffer[] mInputBuffers;
-            public ByteBuffer[] mOutputBuffers;
-            public BufferInfo mBufferInfo;
-        }
-
-        private abstract class RenderObject {
-            public MediaExtractor mMediaExtractor;
-            public MediaCodec mMediaCodec;
-            public MediaCrypto mMediaCrypto;
-            public RenderingBuffers mRenderingBuffers;
-            public MediaFormat mFormat;
-            public int mTrackId;
-            protected MediaPlayerThread mRenderThread;
-            protected Media mMedia;
-            public int mOffset;
-
-            public abstract void initializeObject(String xMime) {
-                if (!checkCryptoSupport())
-                    Log.v(TAG, "Unsupported crypto scheme on track " + mTrackId);
-
-                mMediaCodec = MediaCodec.createDecoderByType(xMime);
-                mMediaCodec.configure(mFormat, mSurface, mMediaCrypto, 0);
-            }
-
-            public abstract int dequeue();
-
-            public abstract boolean render(int xIndex);
-
-            public void startDecoder() {
-                if (mMediaCodec != null && mRenderingBuffers != null) {
-                    mMediaCodec.start();
-                    mRenderingBuffers.mInputBuffers = mMediaCodec
-                        .getInputBuffers();
-                    mRenderingBuffers.mOutputBuffers = mMediaCodec
-                        .getOutputBuffers();
-                    mRenderingBuffers.mBufferInfo = new BufferInfo();
-                }
-            }
-
-            protected boolean checkCryptoSupport() {
-                boolean isCryptoSupported = false;
-                Map<UUID, byte[]> psshInfo = mMediaExtractor.getPsshInfo();
-                if (null != psshInfo) {
-                    for (Iterator<UUID> it = psshInfo.keySet().iterator(); it
-                             .hasNext();) {
-                        UUID uuid = it.next();
-                        if (MediaCrypto.isCryptoSchemeSupported(uuid)) {
-                            Log.v(TAG, "Supported crypto scheme");
-                            mPsshData = new String(psshInfo.get(uuid));
-                            Log.v(TAG, "PSSH for UUID: " + uuid.toString()
-                                  + " has data :" + mPsshData);
-
-                            try {
-                                mMediaCrypto = new MediaCrypto(uuid,
-                                                               psshInfo.get(uuid));
-                            } catch (MediaCryptoException e) {
-                                e.printStackTrace();
-                            }
-                            isCryptoSupported = true;
-                        }
-                    }
-                }
-                return isCryptoSupported;
-            }
-        }
-
-        private class VideoRenderObject extends RenderObject {
-            public void initializeObject(String xMime) {
-                super(xMime);
-                mMedia = Media.VIDEO;
-            }
-
-            @Override
-            public int dequeue() {
-                //Log.v(TAG, "Dequeue data from track " + mTrackId);
-                int outIndex = mMediaCodec.dequeueOutputBuffer(mRenderingBuffers.mBufferInfo, TIME_OUT_MICRO_SECS);
-                //Log.v(TAG, ".... data dequeued");
-
-                switch (outIndex) {
-                case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
-                    //Log.v(TAG, "INFO_OUTPUT_BUFFERS_CHANGED track " + mTrackId);
-                    mRenderingBuffers.mOutputBuffers = mMediaCodec
-                        .getOutputBuffers();
-                    break;
-                case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
-                    //Log.v(TAG,
-                    //      "INFO_OUTPUT_FORMAT_CHANGED "
-                    //      + mMediaCodec.getOutputFormat() + "track "
-                    //      + mTrackId);
-                    break;
-                case MediaCodec.INFO_TRY_AGAIN_LATER:
-                    //Log.v(TAG,
-                    //      "INFO_TRY_AGAIN_LATER decoder timmed out on track "
-                    //      + mTrackId);
-                    break;
-                }
-
-                return outIndex;
-            }
-
-            @Override
-            public boolean render(int xIndex) {
-                boolean done = false;
-                if (xIndex >= 0) {
-                    ByteBuffer buffer = mRenderingBuffers.mOutputBuffers[xIndex];
-                    Log.v(TAG, "Rendering video track " + mTrackId);
-                    while (mRenderingBuffers.mBufferInfo.presentationTimeUs / 1000 > System
-                           .currentTimeMillis() - mStartMs) {
-                        try {
-                            sleep(10);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                            break;
-                        }
-                    }
-                    mMediaCodec.releaseOutputBuffer(xIndex, true);
-                }
-
-                // All decoded frames have been rendered
-                if ((mRenderingBuffers.mBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                    Log.v(TAG, "outputBuffers BUFFER_FLAG_END_OF_STREAM track "
-                          + mTrackId);
-                    done = true;
-                }
-
-                return done;
-            }
-        }
-
-        private class AudioRenderObject extends RenderObject {
-            public void initializeObject(String xMime) {
-                super(xMime);
-                mMedia = Media.AUDIO;
-            }
-
-            @Override
-            public int dequeue() {
-                Log.v(TAG, "Dequeue data .......");
-                int outIndex = mMediaCodec.dequeueOutputBuffer(
-                                                               mRenderingBuffers.mBufferInfo, 0);
-                Log.v(TAG, "Encrypted data dequeued");
-
-                switch (outIndex) {
-                case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
-                    Log.v(TAG, "INFO_OUTPUT_BUFFERS_CHANGED track " + mTrackId);
-                    mRenderingBuffers.mOutputBuffers = mMediaCodec
-                        .getOutputBuffers();
-                    break;
-                case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
-                    final MediaFormat format = mMediaCodec.getOutputFormat();
-                    Log.d(TAG, "Output format has changed to " + format + "("
-                          + MediaFormat.KEY_SAMPLE_RATE + ")" + "track "
-                          + mTrackId);
-                    mAudioTrack.setPlaybackRate(format
-                                                .getInteger(MediaFormat.KEY_SAMPLE_RATE));
-                    break;
-                case MediaCodec.INFO_TRY_AGAIN_LATER:
-                    Log.v(TAG, "INFO_TRY_AGAIN_LATER decoder timmed out track "
-                          + mTrackId);
-                    break;
-                }
-
-                return outIndex;
-            }
-
-            @Override
-            public boolean render(int xIndex) {
-                boolean done = false;
-                if (xIndex >= 0) {
-                    ByteBuffer buffer = mRenderingBuffers.mOutputBuffers[xIndex];
-                    Log.v(TAG, "Rendering audio track" + mTrackId);
-                    final byte[] chunk = new byte[mRenderingBuffers.mBufferInfo.size];
-                    buffer.get(chunk);
-                    buffer.clear();
-                    if (chunk.length > 0) {
-                        mAudioTrack.write(chunk, 0, chunk.length);
-                    }
-                    mMediaCodec.releaseOutputBuffer(xIndex, false);
-                }
-
-                // All decoded frames have been rendered
-                if ((mRenderingBuffers.mBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                    Log.v(TAG, "outputBuffers BUFFER_FLAG_END_OF_STREAM track "
-                          + mTrackId);
-                    done = true;
-                }
-                return done;
-            }
-        }
-
-        private abstract class MediaPlayerThread implements Runnable {
-            protected RenderObject mRenderObject;
-            protected Thread mRunner;
-            protected boolean mStop = false;
-            protected boolean mStart = false;
-
-            public MediaPlayerThread(PlayerThread xPlayer) {
-                mRunner = new Thread(this, "Video player Thread");
-                mRunner.start();
-            }
-
-            public void stopThread() {
-                this.mStop = true;
-                try {
-                    mRunner.join(1000);
-                    if (mRunner.isAlive()) {
-                        Log.e(TAG, "Serious problem with mediaplayer thread! "
-                              + mRunner.getName());
-                    }
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-
-            public boolean isStopped() {
-                return this.mStop;
-            }
-
-            public void startThread() {
-                this.mStart = true;
-            }
-
-            @Override
-            public void run() {
-                while (!mStop) {
-                    if (mStart) {
-                        int index = mRenderObject.dequeue();
-                        mStop = mRenderObject.render(index);
-                    } else {
-                        try {
-                            sleep(10);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
+        public void waitForUnPaused() {
+        	if (Thread.currentThread().equals(mPlayerThread))
+        	{
+        		Log.v(TAG, "waitForUnPaused(): will not wait for me !!");
+        		return;
+        	}
+            synchronized (mStopLock) {
+                while (mPauseStream) {
+                    try {
+                        mStopLock.wait();
+                    } catch (InterruptedException ie) {
+                        // discard
                     }
                 }
             }
         }
 
-        private class VideoPlayerThread extends MediaPlayerThread {
-            public VideoPlayerThread(PlayerThread xPlayer,
-                                     RenderObject xRenderObject) {
-                super(xPlayer);
-                this.mRenderObject = xRenderObject;
-            }
-        }
+        private class RenderingBuffers 
+		{
+			public ByteBuffer[] mInputBuffers;
+			public ByteBuffer[] mOutputBuffers;
+			public BufferInfo mBufferInfo;
+		}
 
-        private class AudioPlayerThread extends MediaPlayerThread {
+	}
+	
+	// Activity requests to stop playing
+	public void stopStream() 
+	{
+		// Raise the corresponding flag
+		mPlayerThread.mStopStream = true;
+	}
 
-            public AudioPlayerThread(PlayerThread xPlayer,
-                                     RenderObject xRenderObject) {
-                super(xPlayer);
-                this.mRenderObject = xRenderObject;
+	// Activity requests to pause playing
+	public void pauseStream() 
+	{
+		// Raise corresponding flag
+		mPlayerThread.mPauseStreamRequested = true;
+		// Setup other flags according to current state
+		mPlayerThread.mUnPauseStreamRequested = false;
+		mPlayerThread.mPauseNotified = false;
+	}
 
-                int buffsize = AudioTrack.getMinBufferSize(44100,
-                                                           AudioFormat.CHANNEL_OUT_STEREO,
-                                                           AudioFormat.ENCODING_PCM_16BIT);
-                mAudioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, 44100,
-                                             AudioFormat.CHANNEL_OUT_STEREO,
-                                             AudioFormat.ENCODING_PCM_16BIT, buffsize,
-                                             AudioTrack.MODE_STATIC);
-            }
-        }
-    }
+	// Activity requests to re-play stream
+	public void unPauseStream() 
+	{
+		// Raise corresponding flag
+		mPlayerThread.mPauseStreamRequested = false;
+		// Setup other flags according to current state
+		mPlayerThread.mUnPauseStreamRequested = true;
+		mPlayerThread.mPauseNotified = false;
+	}
+
+
+	/*
+	 * MediaControl.MediaPlayerControl implem
+	 */
+
+	// Called when the start button is clicked to start playing (unpause)
+	@Override
+	public void start() 
+	{
+		unPauseStream();
+		mPlayerThread.waitForUnPaused();
+		mIsPlaying = true;
+	}
+
+	// Called when the pause button is clicked (pause)
+	@Override
+	public void pause() 
+	{
+		mIsPlaying = false;
+		pauseStream();
+		mPlayerThread.waitForPaused();
+	}
+
+	// Return the media duration value
+	// This value is displayed at the end of the slider
+	@Override
+	public int getDuration() 
+	{
+		return (int)mDuration;
+	}
+
+	// Return the time on the current position in the media
+	// This value is used for moving the cursor symbolizing the 
+	// current position in the stream on the slider
+	@Override
+	public int getCurrentPosition() 
+	{
+		return (int)mSampleTime;
+	}
+
+	// User request to seek to another position in the stream
+	// (cursor was moved)
+	@Override
+	public void seekTo(final int pos) 
+	{
+		// We wait the user released the cursor to avoid doing too many seek
+		mHandler.removeMessages(DO_SEEK_TO);
+		mHandler.sendMessageDelayed(mHandler.obtainMessage(DO_SEEK_TO, pos, 0), 200);
+	}
+
+	// Return playing state of the player
+	// Used for displaying either play button or pause button
+	@Override
+	public boolean isPlaying() 
+	{
+		return mIsPlaying;
+	}
+
+	// Return the percentage of media cached
+	// Used for filling the slider for indicating cache state
+	@Override
+	public int getBufferPercentage() 
+	{
+		float percent = 0;
+		if (mDuration != 0)
+		{
+			percent = ((float)(mCacheDuration + mSampleTime) * 100) / (float)mDuration;
+			if (mCacheDuration + mSampleTime >= mDuration)
+				percent = 100;
+		}
+		return (int)percent;
+	}
+
+	// Return a boolean indicating if player can pause
+	// Used for activating pause button
+	@Override
+	public boolean canPause() 
+	{
+		return true;
+	}
+
+	// Return a boolean indicating if player can seek backward
+	// Used for activating rewind button
+	@Override
+	public boolean canSeekBackward() 
+	{
+		return true;
+	}
+
+	// Return a boolean indicating if player can seek forward
+	// Used for activating fast forward button
+	@Override
+	public boolean canSeekForward() 
+	{
+		return true;
+	}
+
+	// Return the audio Session ID
+	// Might be used for audio priority ?
+	@Override
+	public int getAudioSessionId() 
+	{
+		// TODO: When audio will run we'll provide one
+		// TODO: Understand what is the real purpose of it 
+		//       in media controller context
+		return 0;
+	}
 }
