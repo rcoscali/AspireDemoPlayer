@@ -5,6 +5,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.nio.ShortBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -572,18 +573,23 @@ public class VideoPlayer extends Activity
 		String mPsshData;
 		// Rendering buffers used for deciphering/decoding content
 		RenderingBuffers[] mBuffers;
-		// The rendered audio track
-		AudioTrack mAudioTrack;
-		// Buffers timeout value in Âµs
+		// Audio track ID
+		private int mAudioTrackId = -1;
+		// Buffers timeout value in µs
 		private final long TIME_OUT_MICRO_SECS = 10000000;
 		// Number of tracks available in media
 		private int mNumTracks = 0;
 		// The main video track rendered (one used for timing others)
-		private int mMainTrack = 0;
+		private int mMainTrackId = 0;
 		// Media formats (one per track)
 		private MediaFormat[] mFormat;
 		
 		private long mPauseStarted = 0;
+		private AudioRenderer mRenderAudioThread;
+		AudioRenderer mAudioRenderer = null;
+		private Thread mAudioRendererThread = null;
+		private final Object mAudioLock = new Object();
+		private volatile boolean mAudioSync = false;
 
 		// Public constructor
 		public PlayerThread(Surface xSurface) 
@@ -607,6 +613,8 @@ public class VideoPlayer extends Activity
 		@Override
 		public void run() 
 		{
+//			android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
+
 			// Infinite loop
 			while (true)
 				// Check if we got a source for data
@@ -695,10 +703,6 @@ public class VideoPlayer extends Activity
 		{
 			try 
 			{
-//				mAudioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, 44100,
-//						AudioFormat.CHANNEL_OUT_STEREO,
-//						AudioFormat.ENCODING_PCM_16BIT, 8192 * 2,
-//						AudioTrack.MODE_STATIC);
 				if (mExtractor == null)
 				{
 					mExtractor = new MediaExtractor();
@@ -750,7 +754,7 @@ public class VideoPlayer extends Activity
 						// A Video track
 						//
 						if (mime.equals(MIMETYPE_VIDEO_AVC)) {
-							mMainTrack = i;
+							mMainTrackId = i;
 							mExtractor.selectTrack(i);
 							// Got metadata from media ?
 							if (mFormat[i].containsKey(MediaFormat.KEY_HEIGHT) && 
@@ -797,11 +801,17 @@ public class VideoPlayer extends Activity
 						//
 						// An audio track
 						//
-//						if (mime.equals(MIMETYPE_AUDIO_MP4A)) 
-//						{
-//							mMediaCodec[i] = MediaCodec.createDecoderByType(mime);
-//							mMediaCodec[i].configure(mFormat[i], null, mMediaCrypto, 0);
-//						}
+						if (mime.equals(MIMETYPE_AUDIO_MP4A)) 
+						{
+							if (mAudioTrackId == -1)
+							{
+								mAudioTrackId = i;
+								mMediaCodec[i] = MediaCodec.createDecoderByType(mime);
+								mMediaCodec[i].configure(mFormat[i], null, mMediaCrypto, 0);
+								mAudioRenderer = new AudioRenderer(this, mAudioTrackId);
+								mAudioRendererThread = new Thread(mAudioRenderer);
+							}
+						}
 					}
 					for (int i = 0; i < mNumTracks; ++i) 
 					{
@@ -814,6 +824,8 @@ public class VideoPlayer extends Activity
 							mBuffers[i].mBufferInfo = new BufferInfo();
 						}
 					}
+					if (mAudioRendererThread != null)
+						mAudioRendererThread.start();
 				}
 				// We paused, then we restart
 				else
@@ -823,6 +835,7 @@ public class VideoPlayer extends Activity
 						mStartMs += mSampleTime - (mSeekToTimeUs / 1000);
 						mSeekToTimeUs = -1;
 					}
+					mAudioRendererThread.interrupt();
 				}
 				
 				mIsEndOfStream = false;
@@ -848,15 +861,11 @@ public class VideoPlayer extends Activity
 						break;
 					}
  
-					if (renderVideo(mMainTrack))
+					if (renderVideo(mMainTrackId))
 					{
 						mStopStream = true;
 						break;
-					}
-					
-					/*if (renderAudio(1)) {
-						continue;
-					}*/
+					}					
 				}
 
 			} 
@@ -873,7 +882,7 @@ public class VideoPlayer extends Activity
 
 		private void inputBuffer(int xtrack) 
 		{
-			mExtractor.selectTrack(xtrack);
+//			mExtractor.selectTrack(xtrack);
 			int inputBufferIndex = mMediaCodec[xtrack]
 					.dequeueInputBuffer(TIME_OUT_MICRO_SECS);
 			if (inputBufferIndex >= 0) 
@@ -904,6 +913,10 @@ public class VideoPlayer extends Activity
 								inputBufferIndex, 0, mCryptoInfo,
 								mExtractor.getSampleTime(), mCryptoInfo.mode);
 					}
+//					synchronized (mAudioLock) {
+//						mAudioSync = true;
+//						mAudioLock.notifyAll();
+//					}
 					mExtractor.advance();
 				}
 			}
@@ -957,66 +970,154 @@ public class VideoPlayer extends Activity
 			if (!mPauseStreamRequested && !mPauseStream)
 			{
 				int outIndex = -1;
-				inputBuffer(xTrack);
-				outIndex = outputBuffer(xTrack);
-				if (outIndex >= 0)
+				if (mExtractor.getSampleTrackIndex() == xTrack)
 				{
-					while (mBuffers[xTrack].mBufferInfo.presentationTimeUs / 1000 > 
-							System.currentTimeMillis() - mStartMs && 
-							!(mPauseStreamRequested || mPauseStream)) 
+					inputBuffer(xTrack);
+					outIndex = outputBuffer(xTrack);
+					if (outIndex >= 0)
 					{
-						try 
+						while (mBuffers[xTrack].mBufferInfo.presentationTimeUs / 1000 > 
+						System.currentTimeMillis() - mStartMs && 
+						!(mPauseStreamRequested || mPauseStream)) 
 						{
-							sleep(4);
-						} 
-						catch (InterruptedException e) 
-						{
-							e.printStackTrace();
-							break;
+							try 
+							{
+								sleep(10);
+							} 
+							catch (InterruptedException e) 
+							{
+								e.printStackTrace();
+								break;
+							}
 						}
+						mMediaCodec[xTrack].releaseOutputBuffer(outIndex, true);
 					}
-					mMediaCodec[xTrack].releaseOutputBuffer(outIndex, true);
-				}
 
-				// All decoded frames have been rendered
-				if ((mBuffers[xTrack].mBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) 
-				{
-					Log.v(TAG, "outputBuffers BUFFER_FLAG_END_OF_STREAM");
-					mIsEndOfStream = true;
-					// Tell UI about EOS
-					VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_EOS, this).sendToTarget();
-				}
-				else 
-				{
-					// Tell UI about advance
-					Message aMsg7 = VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_ADVANCE, this);
-					aMsg7.getData().putLong(VideoPlayer.KEY_SAMPLE_TIME, mBuffers[xTrack].mBufferInfo.presentationTimeUs);
-					aMsg7.sendToTarget();				
-				}
+					// All decoded frames have been rendered
+					if ((mBuffers[xTrack].mBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) 
+					{
+						Log.v(TAG, "outputBuffers BUFFER_FLAG_END_OF_STREAM");
+						mIsEndOfStream = true;
+						// Tell UI about EOS
+						VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_EOS, this).sendToTarget();
+					}
+					else 
+					{
+						// Tell UI about advance
+						Message aMsg7 = VideoPlayer.this.mHandler.obtainMessage(VideoPlayer.DO_ADVANCE, this);
+						aMsg7.getData().putLong(VideoPlayer.KEY_SAMPLE_TIME, mBuffers[xTrack].mBufferInfo.presentationTimeUs);
+						aMsg7.sendToTarget();				
+					}
+				} else
+					try {
+						Thread.sleep(2);
+					} catch (InterruptedException e) {
+					}
 			} 
 
 			return mIsEndOfStream;
 		}
 
-//		private boolean renderAudio(int xTrack) 
-//		{
-//			inputBuffer(xTrack);
-//			int outIndex = outputBuffer(xTrack);
-//			if(outIndex >= 0)
-//			{
-//				ByteBuffer buffer = mBuffers[xTrack].mOutputBuffers[outIndex];
-//				final byte[] chunk = new byte[mBuffers[xTrack].mBufferInfo.size];
-//				buffer.get(chunk);
-//				buffer.clear();
-//				mAudioTrack.play();
-//				if(chunk.length > 0)
-//					mAudioTrack.write(chunk, 0, chunk.length);
-//				
-//				mMediaCodec[xTrack].releaseOutputBuffer(outIndex, false);
-//			}
-//
-//			return false;
-//		}
+		private class AudioRenderer implements Runnable
+		{
+			private int mAudioTrackId = -1;
+			private PlayerThread mPlayerThread = null;
+			// The rendered audio track
+			private AudioTrack mAudioTrack;
+			
+			public AudioRenderer(PlayerThread xPlayerThread, int xTrack)
+			{
+				mAudioTrackId = xTrack;
+				mPlayerThread = xPlayerThread;
+				int buffsize = AudioTrack.getMinBufferSize(48000,
+						AudioFormat.CHANNEL_OUT_STEREO,
+						AudioFormat.ENCODING_PCM_16BIT);
+				mAudioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, 48000,
+						AudioFormat.CHANNEL_OUT_STEREO,
+						AudioFormat.ENCODING_PCM_16BIT, buffsize,
+						AudioTrack.MODE_STREAM);
+				mAudioTrack.play();
+			}
+			
+			public int getAudioSessionId()
+			{
+				return mAudioTrack.getAudioSessionId();
+			}
+			
+			public void run() 
+			{
+				android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
+				while (!mPlayerThread.mIsEndOfStream && !mPlayerThread.mStopStream)
+				{
+					if (mPlayerThread.mPauseStream)
+						waitForUnPaused();
+
+					else
+					{
+						if (mExtractor.getSampleTrackIndex() == mAudioTrackId)
+						{
+							mPlayerThread.inputBuffer(mAudioTrackId);
+							int outIndex = mPlayerThread.outputBuffer(mAudioTrackId);
+							if(outIndex >= 0)
+							{
+								//							Log.v(TAG, "Audio thread will wait " + (mBuffers[mAudioTrackId].mBufferInfo.presentationTimeUs / 1000 - System.currentTimeMillis() - mStartMs) + " ms");
+								//							while (mBuffers[mAudioTrackId].mBufferInfo.presentationTimeUs / 1000 > 
+								//									System.currentTimeMillis() - mStartMs && 
+								//									!(mPauseStreamRequested || mPauseStream)) 
+								//							{
+								//								try 
+								//								{
+								//									sleep(10);
+								//								} 
+								//								catch (InterruptedException e) 
+								//								{
+								//									e.printStackTrace();
+								//									break;
+								//								}
+								//							}
+								ByteBuffer buffer = mBuffers[mAudioTrackId].mOutputBuffers[outIndex];
+								final byte[] chunk = new byte[mBuffers[mAudioTrackId].mBufferInfo.size];
+								buffer.get(chunk);
+								buffer.clear();
+								if(chunk.length > 0)
+									mAudioTrack.write(chunk, 0, chunk.length);
+
+								mPlayerThread.mMediaCodec[mAudioTrackId].releaseOutputBuffer(outIndex, false);
+								//							waitForAudioSync();
+							}
+						} else
+							try {
+								Thread.sleep(2);
+							} catch (InterruptedException e) {
+							}
+					}
+				}
+			}
+		}
+
+        /**
+         * Wait for the player to be paused.
+         * <p>
+         * Called from any thread other than the PlayTask thread.
+         */
+        public void waitForAudioSync() {
+        	if (Thread.currentThread().equals(mPlayerThread))
+        	{
+        		Log.v(TAG, "waitForPaused(): will not wait for me !!");
+        		return;
+        	}
+            synchronized (mAudioLock) {
+                while (!mAudioSync) {
+                    try {
+                        mAudioLock.wait();
+                    } catch (InterruptedException ie) {
+                        // discard
+                    }
+                }
+                // Rearm barrier
+                mAudioSync = false;
+            }
+        }
 
         /**
          * Wait for the player to be paused.
@@ -1068,7 +1169,6 @@ public class VideoPlayer extends Activity
 			public ByteBuffer[] mOutputBuffers;
 			public BufferInfo mBufferInfo;
 		}
-
 	}
 	
 	// Activity requests to stop playing
@@ -1200,9 +1300,6 @@ public class VideoPlayer extends Activity
 	@Override
 	public int getAudioSessionId() 
 	{
-		// TODO: When audio will run we'll provide one
-		// TODO: Understand what is the real purpose of it 
-		//       in media controller context
-		return 0;
+		return mPlayerThread.mAudioRenderer.getAudioSessionId();
 	}
 }
