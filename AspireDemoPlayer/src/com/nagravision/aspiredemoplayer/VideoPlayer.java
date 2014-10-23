@@ -806,6 +806,7 @@ public class VideoPlayer extends Activity
 							if (mAudioTrackId == -1)
 							{
 								mAudioTrackId = i;
+								mExtractor.selectTrack(i);
 								mMediaCodec[i] = MediaCodec.createDecoderByType(mime);
 								mMediaCodec[i].configure(mFormat[i], null, mMediaCrypto, 0);
 								mAudioRenderer = new AudioRenderer(this, mAudioTrackId);
