@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2014 NagraVision
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.nagravision.aspiredemoplayer;
 
 import java.io.File;
@@ -26,138 +41,160 @@ import android.widget.TextView.OnEditorActionListener;
 import android.widget.Toast;
 import android.provider.Settings.Secure;
 
-public class MainActivity extends Activity {
-	private Button mLogin;
-	private EditText mUsername;
-	private EditText mPassword;
-	private TextView mUserNameLabel;
-	private TextView mPasswordLabel;
-	private TextView mLoginDirectiveLabel;
-	private static final String TAG = "MainPlayer";
-	private DrmAgent mDrmAgent;
+public class MainActivity extends Activity
+{
+    private Button              mLogin;
+    private EditText            mUsername;
+    private EditText            mPassword;
+    private TextView            mUserNameLabel;
+    private TextView            mPasswordLabel;
+    private TextView            mLoginDirectiveLabel;
+    static final String         TAG = "MainPlayer";
+    private DrmAgent            mDrmAgent;
 
-	@Override
-	protected void onCreate(Bundle xBundle) {
-		super.onCreate(xBundle);
-		
-		DrmAgent.gCreateInstance(this);
-		mDrmAgent = DrmAgent.getInstance();
-		String android_id = Secure.getString(MainActivity.this.getContentResolver(), Secure.ANDROID_ID); 		
-		mDrmAgent.setAndroidId(android_id);		
-		mDrmAgent.setDatabasePath(this.getExternalFilesDir(null).getAbsolutePath());
-		
-	    setContentView(R.layout.login);
-	    mLogin = (Button) findViewById(R.id.login_button);
-		mLogin.setOnClickListener((android.view.View.OnClickListener) mLogInListener);
-		mUserNameLabel = (TextView) findViewById(R.id.userNameLabel);
-		mPasswordLabel = (TextView) findViewById(R.id.passwordLabel);
-		mLoginDirectiveLabel = (TextView) findViewById(R.id.loginDirectiveLabel);
-		mUsername = (EditText) findViewById(R.id.userName);
-		mPassword = (EditText) findViewById(R.id.password);
-		mPassword.setOnEditorActionListener(mEnterPwdListener);
-		//copyAssets();
-	}
+    @Override
+    protected void onCreate(Bundle xBundle)
+    {
+        super.onCreate(xBundle);
 
-	@Override
-	protected void onResume() {
-		super.onResume();
-		setWidgetVisibility(View.VISIBLE);
-		if(mDrmAgent.isRegistered()){
-			Intent intent = new Intent(MainActivity.this, Content.class);
-			startActivity(intent);
-			
-		}
-	}
-	
-	@Override
-	protected void  onPause(){
-		  super. onPause();
-		  setWidgetVisibility(View.INVISIBLE);
-		  finish();
-	  }
+        DrmAgent.gCreateInstance(this);
+        mDrmAgent = DrmAgent.getInstance();
+        String android_id = Secure.getString(
+            MainActivity.this.getContentResolver(), Secure.ANDROID_ID);
+        mDrmAgent.setAndroidId(android_id);
+        mDrmAgent.setDatabasePath(this.getExternalFilesDir(null)
+            .getAbsolutePath());
 
-	private void setWidgetVisibility(int xVisibility) {
+        setContentView(R.layout.login);
+        mLogin = (Button) findViewById(R.id.login_button);
+        mLogin
+            .setOnClickListener((android.view.View.OnClickListener) mLogInListener);
+        mUserNameLabel = (TextView) findViewById(R.id.userNameLabel);
+        mPasswordLabel = (TextView) findViewById(R.id.passwordLabel);
+        mLoginDirectiveLabel = (TextView) findViewById(R.id.loginDirectiveLabel);
+        mUsername = (EditText) findViewById(R.id.userName);
+        mPassword = (EditText) findViewById(R.id.password);
+        mPassword.setOnEditorActionListener(mEnterPwdListener);
+        // copyAssets();
+    }
 
-		if(mLogin != null){
-			mLogin.setVisibility(xVisibility);
-			mUsername.setVisibility(xVisibility);
-			mPassword.setVisibility(xVisibility);
-			mUserNameLabel.setVisibility(xVisibility);
-			mPasswordLabel.setVisibility(xVisibility);
-			mLoginDirectiveLabel.setVisibility(xVisibility);
-		}
-	}
-	
-	private void doLogin()
-	{
-		mDrmAgent.setUserName(mUsername.getText().toString());
-		mDrmAgent.setPassword(mPassword.getText().toString());
+    @Override
+    protected void onResume()
+    {
+        super.onResume();
+        setWidgetVisibility(View.VISIBLE);
+        if (mDrmAgent.isRegistered())
+        {
+            Intent intent = new Intent(MainActivity.this, Content.class);
+            startActivity(intent);
 
-		if (mDrmAgent.loginSuccedded() && mDrmAgent.registerDevice()) {
-			Intent intent = new Intent(MainActivity.this, Content.class);
-			startActivity(intent);
-		} else {
-			Toast.makeText(MainActivity.this,
-					"Incorrect login credentials", Toast.LENGTH_LONG)
-					.show();
-		}		
-	}
+        }
+    }
 
-	private OnClickListener mLogInListener = new OnClickListener() {
-		public void onClick(View v) {
-			doLogin();
-		}
-	};
-	
-	private OnEditorActionListener mEnterPwdListener = new TextView.OnEditorActionListener() {
-		
-		@Override
-		public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-			if (actionId == EditorInfo.IME_NULL && event != null)
-				doLogin();
-			return false;
-		}
-	};
+    @Override
+    protected void onPause()
+    {
+        super.onPause();
+        setWidgetVisibility(View.INVISIBLE);
+        finish();
+    }
 
-	// private void copyAssets() {
-	// 	AssetManager assetManager = getAssets();
-	// 	String[] files = null;
-	// 	try {
-	// 		files = assetManager.list("");
-	// 	} catch (IOException e) {
-	// 		Log.e("tag", "Failed to get asset file list.", e);
-	// 	}
-	// 	for (String filename : files) {
-	// 		InputStream in = null;
-	// 		OutputStream out = null;
-	// 		try {
-	// 			if (!filename.startsWith("images")
-	// 					&& !filename.startsWith("sounds")
-	// 					&& !filename.startsWith("webkit")) {
-	// 				in = assetManager.open(filename);
-	// 				File outFile = new File("/data/drm/contents/" + filename);
-	// 				if (!outFile.exists()) {
-	// 					out = new FileOutputStream(outFile);
-	// 					copyFile(in, out);
-	// 					in.close();
-	// 					in = null;
-	// 					out.flush();
-	// 					out.close();
-	// 					out = null;
-	// 					Log.d(TAG, "Copy asset file to sdcard:" + filename);
-	// 				}
-	// 			}
-	// 		} catch (IOException e) {
-	// 			Log.d(TAG, "Failed to copy asset file: " + filename, e);
-	// 		}
-	// 	}
-	// }
+    private void setWidgetVisibility(int xVisibility)
+    {
 
-	// private void copyFile(InputStream in, OutputStream out) throws IOException {
-	// 	byte[] buffer = new byte[1024];
-	// 	int read;
-	// 	while ((read = in.read(buffer)) != -1) {
-	// 		out.write(buffer, 0, read);
-	// 	}
-	// }
+        if (mLogin != null)
+        {
+            mLogin.setVisibility(xVisibility);
+            mUsername.setVisibility(xVisibility);
+            mPassword.setVisibility(xVisibility);
+            mUserNameLabel.setVisibility(xVisibility);
+            mPasswordLabel.setVisibility(xVisibility);
+            mLoginDirectiveLabel.setVisibility(xVisibility);
+        }
+    }
+
+    private void doLogin()
+    {
+        mDrmAgent.setUserName(mUsername.getText().toString());
+        mDrmAgent.setPassword(mPassword.getText().toString());
+
+        if (mDrmAgent.loginSuccedded() && mDrmAgent.registerDevice())
+        {
+            Intent intent = new Intent(MainActivity.this, Content.class);
+            startActivity(intent);
+        }
+        else
+        {
+            Toast.makeText(MainActivity.this, "Incorrect login credentials",
+                Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private OnClickListener        mLogInListener    = new OnClickListener()
+                                                         {
+                                                             public void onClick(
+                                                                 View v)
+                                                             {
+                                                                 doLogin();
+                                                             }
+                                                         };
+
+    private OnEditorActionListener mEnterPwdListener = new TextView.OnEditorActionListener()
+                                                         {
+
+                                                             @Override
+                                                             public boolean onEditorAction(
+                                                                 TextView v,
+                                                                 int actionId,
+                                                                 KeyEvent event)
+                                                             {
+                                                                 if (actionId == EditorInfo.IME_NULL
+                                                                     && event != null)
+                                                                     doLogin();
+                                                                 return false;
+                                                             }
+                                                         };
+
+    // private void copyAssets() {
+    // AssetManager assetManager = getAssets();
+    // String[] files = null;
+    // try {
+    // files = assetManager.list("");
+    // } catch (IOException e) {
+    // Log.e("tag", "Failed to get asset file list.", e);
+    // }
+    // for (String filename : files) {
+    // InputStream in = null;
+    // OutputStream out = null;
+    // try {
+    // if (!filename.startsWith("images")
+    // && !filename.startsWith("sounds")
+    // && !filename.startsWith("webkit")) {
+    // in = assetManager.open(filename);
+    // File outFile = new File("/data/drm/contents/" + filename);
+    // if (!outFile.exists()) {
+    // out = new FileOutputStream(outFile);
+    // copyFile(in, out);
+    // in.close();
+    // in = null;
+    // out.flush();
+    // out.close();
+    // out = null;
+    // Log.d(TAG, "Copy asset file to sdcard:" + filename);
+    // }
+    // }
+    // } catch (IOException e) {
+    // Log.d(TAG, "Failed to copy asset file: " + filename, e);
+    // }
+    // }
+    // }
+
+    // private void copyFile(InputStream in, OutputStream out) throws
+    // IOException {
+    // byte[] buffer = new byte[1024];
+    // int read;
+    // while ((read = in.read(buffer)) != -1) {
+    // out.write(buffer, 0, read);
+    // }
+    // }
 }

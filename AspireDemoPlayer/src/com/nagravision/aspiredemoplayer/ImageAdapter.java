@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2014 NagraVision
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.nagravision.aspiredemoplayer;
 
 import java.io.File;
@@ -13,228 +28,254 @@ import android.widget.ImageView;
 
 public class ImageAdapter extends BaseAdapter {
 
-	private Context mContext;
+    private Context mContext;
 
-	private PlayerObject[] mThumbIds = 
-	{
-	    /* Avatar Stream */
-	    new PlayerObject(R.drawable.avatar, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar.mp4")),
-	    new PlayerObject(R.drawable.avatar, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc.mp4")),
-	    new PlayerObject(R.drawable.avatar, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc2.mp4")),
-	    new PlayerObject(R.drawable.avatar, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc3.mp4")),
-		    
-	    /* Avatar Local */
-	    new PlayerObject(R.drawable.avatar, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.avatar, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
-		    
-	    /* Oblivion Stream */
-	    new PlayerObject(R.drawable.oblivion, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/oblivion.mp4")),
-	    new PlayerObject(R.drawable.oblivion, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/oblivion_cenc.mp4")),
-	    new PlayerObject(R.drawable.oblivion, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("https://onedrive.live.com/download.aspx?cid=4076E5A51C407C83&resid=4076E5A51C407C83%21191&canary=DAtQGKRlJVJ05toCXET5CL%2FdoywBt2%2F95wF2xXRXF0Y%3D0")),
-	    /* Oblivion Local */
-	    new PlayerObject(R.drawable.oblivion, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.oblivion, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
+    private PlayerObject[] mThumbIds = 
+    {
+        /* Avatar Stream */
+        new PlayerObject(R.drawable.avatar, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar.mp4")),
+        new PlayerObject(R.drawable.avatar, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc.mp4")),
+        new PlayerObject(R.drawable.avatar, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc2.mp4")),
+        new PlayerObject(R.drawable.avatar, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/avatar_cenc3.mp4")),
 
-	    /* SherlockHolmes Stream */
-	    new PlayerObject(R.drawable.sherlockholmes, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/sherlockholmes.mp4")),
-	    new PlayerObject(R.drawable.sherlockholmes, Media.DRM_STREAM_VIDEO,	"video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/sherlockholmes_cenc.mp4")),
-	    
-	    /* SherlockHolmes Local */
-	    new PlayerObject(R.drawable.sherlockholmes, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.sherlockholmes, Media.DRM_LOCAL_VIDEO,	"video/mp4",true),
-	    
-	    /* Batman Local */
-	    new PlayerObject(R.drawable.thedarkknightrises, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.thedarkknightrises, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
-	    
-	    /* TheGrey Local */
-	    new PlayerObject(R.drawable.thegrey, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.thegrey, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
-	    
-	    /* Thor Local */
-	    new PlayerObject(R.drawable.thor, Media.LOCAL_VIDEO, "video/mp4",false),
-	    new PlayerObject(R.drawable.thor, Media.DRM_LOCAL_VIDEO, "video/mp4",true),
-	    
-	    /* Venoms Lab 2 Stream */
-	    new PlayerObject(R.drawable.venomslab2_teaser_1080, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali2/Videos/venomslab2_teaser_1080.mp4")),
-	    new PlayerObject(R.drawable.venomslab2_teaser_1080, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali2/Videos/venomslab2_teaser_1080_cenc.mp4")),	    
-	    
-	    /* Sintel Stream */
-	    new PlayerObject(R.drawable.sintel_poster, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://mirrorblender.top-ix.org/movies/sintel-1024-stereo.mp4")),
-	    new PlayerObject(R.drawable.sintel_poster, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("https://www.dropbox.com/s/1ogirag33q5f7ff/sintel-1024-stereo_cenc.mp4?dl=1")),	    
+        /* Avatar Local */
+        new PlayerObject(R.drawable.avatar, Media.LOCAL_VIDEO, "video/mp4",false),
+        new PlayerObject(R.drawable.avatar, Media.DRM_LOCAL_VIDEO, "video/mp4",true, URI.create("file:///sdcard/Android/data/com.nagravision.aspiredemoplayer/files/contents/avatar_cenc.mp4")),
 
-	    /* Tears Of Steel Stream */
-	    new PlayerObject(R.drawable.tears_of_steel, Media.STREAM_VIDEO, "video/mp4",false, URI.create("https://onedrive.live.com/download.aspx?cid=4076E5A51C407C83&resid=4076E5A51C407C83%21151&authkey=%21ALCGbdGV_Je9wT0&canary=DAtQGKRlJVJ05toCXET5CL%2FdoywBt2%2F95wF2xXRXF0Y%3D1")),
-	    new PlayerObject(R.drawable.tears_of_steel, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("https://onedrive.live.com/download.aspx?cid=4076E5A51C407C83&resid=4076E5A51C407C83%21155&authkey=%21AFalpkr36hmdsGs&canary=DAtQGKRlJVJ05toCXET5CL%2FdoywBt2%2F95wF2xXRXF0Y%3D9")),	    
+        /* Oblivion Stream */
+        new PlayerObject(R.drawable.oblivion, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/oblivion.mp4")),
+        new PlayerObject(R.drawable.oblivion, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/oblivion_cenc.mp4")),
+        new PlayerObject(R.drawable.oblivion, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("https://onedrive.live.com/download.aspx?cid=4076E5A51C407C83&resid=4076E5A51C407C83%21191&canary=DAtQGKRlJVJ05toCXET5CL%2FdoywBt2%2F95wF2xXRXF0Y%3D0")),
+        /* Oblivion Local */
+        new PlayerObject(R.drawable.oblivion, Media.LOCAL_VIDEO, "video/mp4",false),
+        new PlayerObject(R.drawable.oblivion, Media.DRM_LOCAL_VIDEO, "video/mp4",true, URI.create("file:///sdcard/Android/data/com.nagravision.aspiredemoplayer/files/contents/oblivion_cenc.mp4")),
 
-	    /* Gran Dillama Stream */
-	    new PlayerObject(R.drawable.gran_dillama, Media.STREAM_VIDEO, "video/mp4",false, URI.create("https://www.dropbox.com/s/xiecigq414bnv9c/02_gran_dillama_1080p.mp4?dl=1")),
-	    new PlayerObject(R.drawable.gran_dillama, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("https://www.dropbox.com/s/5jeqdzfkdekchhl/02_gran_dillama_1080p_cenc.mp4?dl=1")),	    
+        /* SherlockHolmes Stream */
+        new PlayerObject(R.drawable.sherlockholmes, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/sherlockholmes.mp4")),
+        new PlayerObject(R.drawable.sherlockholmes, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali/Aspire/assets/sherlockholmes_cenc.mp4")),
 
-	    /* Beethoven Local */
-	    new PlayerObject(R.drawable.beethoven, Media.LOCAL_AUDIO, "audio/mp3",false), 
-	};
-	
-	public int getCount() {
-		return mThumbIds.length;
-	}
+        /* SherlockHolmes Local */
+        new PlayerObject(R.drawable.sherlockholmes, Media.LOCAL_VIDEO, "video/mp4",false),
+        new PlayerObject(R.drawable.sherlockholmes, Media.DRM_LOCAL_VIDEO,  "video/mp4",true, URI.create("file:///sdcard/Android/data/com.nagravision.aspiredemoplayer/files/contents/sherlockholmes_cenc.mp4")),
 
-	public Object getItem(int position) {
-		return mThumbIds[position].mID;
-	}
+        /* Batman Local */
+        new PlayerObject(R.drawable.thedarkknightrises, Media.LOCAL_VIDEO, "video/mp4",false),
+        new PlayerObject(R.drawable.thedarkknightrises, Media.DRM_LOCAL_VIDEO, "video/mp4",true, URI.create("file:///sdcard/Android/data/com.nagravision.aspiredemoplayer/files/contents/thedarkknightrises_cenc.mp4")),
 
-	public Object getItemMedia(int position) {
-		return mThumbIds[position].mMedia;
-	}
+        /* TheGrey Local */
+        new PlayerObject(R.drawable.thegrey, Media.LOCAL_VIDEO, "video/mp4",false),
+        new PlayerObject(R.drawable.thegrey, Media.DRM_LOCAL_VIDEO, "video/mp4",true, URI.create("file:///sdcard/Android/data/com.nagravision.aspiredemoplayer/files/contents/thegrey_cenc.mp4")),
 
-	public Object getItemMime(int position) {
-		return mThumbIds[position].mMime;
-	}
+        /* Thor Local */
+        new PlayerObject(R.drawable.thor, Media.LOCAL_VIDEO, "video/mp4",false),
+        new PlayerObject(R.drawable.thor, Media.DRM_LOCAL_VIDEO, "video/mp4",true, URI.create("file:///sdcard/Android/data/com.nagravision.aspiredemoplayer/files/contents/thor_cenc.mp4")),
 
-	public Object getItemExt(int position) {
-		return mThumbIds[position].mExt;
-	}
+        /* Venoms Lab 2 Stream */
+        new PlayerObject(R.drawable.venomslab2_teaser_1080, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://home.citycable.ch/rcoscali2/Videos/venomslab2_teaser_1080.mp4")),
+        new PlayerObject(R.drawable.venomslab2_teaser_1080, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("http://home.citycable.ch/rcoscali2/Videos/venomslab2_teaser_1080_cenc.mp4")),         
 
-	public Object getItemUri(int position) {
-		if (isItemLocal(position) && mThumbIds[position].mUri == null)
-		{
-			int itemId = mThumbIds[position].mID;
-			String filePath = mContext.getResources().getResourceName(itemId);
-			String fileUri = "file://" +
-					  mContext.getExternalFilesDir(null).getAbsolutePath() + 
-					  "/contents/" + 
-					  filePath.substring(filePath.lastIndexOf("/") + 1) + 
-					  mThumbIds[position].mExt;
-			mThumbIds[position].mUri = URI.create(fileUri);
-		}
-		return mThumbIds[position].mUri;
-	}
-	
-	public boolean isLocalItemAccessible(int position) {
-		if (isItemLocal(position))
-			return (new File(((URI)getItemUri(position)).getPath())).canRead();
-		return true;
-	}
+        /* Sintel Stream */
+        new PlayerObject(R.drawable.sintel_poster, Media.STREAM_VIDEO, "video/mp4",false, URI.create("http://mirrorblender.top-ix.org/movies/sintel-1024-stereo.mp4")),
+        new PlayerObject(R.drawable.sintel_poster, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("https://www.dropbox.com/s/dk97hwyaa41mm5a/sintel-1024-stereo-cenc.mp4?dl=1")),         
 
-	public long getItemId(int position) {
-		return mThumbIds[position].mID;
-	}
+        /* Tears Of Steel Stream */
+        new PlayerObject(R.drawable.tears_of_steel, Media.STREAM_VIDEO, "video/mp4",false, URI.create("https://onedrive.live.com/download.aspx?cid=4076E5A51C407C83&resid=4076E5A51C407C83%21151&authkey=%21ALCGbdGV_Je9wT0&canary=DAtQGKRlJVJ05toCXET5CL%2FdoywBt2%2F95wF2xXRXF0Y%3D1")),
+        new PlayerObject(R.drawable.tears_of_steel, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("https://onedrive.live.com/download.aspx?cid=4076E5A51C407C83&resid=4076E5A51C407C83%21155&authkey=%21AFalpkr36hmdsGs&canary=DAtQGKRlJVJ05toCXET5CL%2FdoywBt2%2F95wF2xXRXF0Y%3D9")),           
 
-	public boolean isItemLocal(int position) {
-		return (mThumbIds[position].mMedia.equals(Media.LOCAL_AUDIO) ||
-				mThumbIds[position].mMedia.equals(Media.LOCAL_VIDEO) ||
-				mThumbIds[position].mMedia.equals(Media.DRM_LOCAL_AUDIO) ||
-				mThumbIds[position].mMedia.equals(Media.DRM_LOCAL_VIDEO));
-	}
+        /* Gran Dillama Stream */
+        new PlayerObject(R.drawable.gran_dillama, Media.STREAM_VIDEO, "video/mp4",false, URI.create("https://www.dropbox.com/s/xiecigq414bnv9c/02_gran_dillama_1080p.mp4?dl=1")),
+        new PlayerObject(R.drawable.gran_dillama, Media.DRM_STREAM_VIDEO, "video/mp4",true, URI.create("https://www.dropbox.com/s/5jeqdzfkdekchhl/02_gran_dillama_1080p_cenc.mp4?dl=1")),       
 
-	public boolean isItemStream(int position) {
-		return ! isItemLocal(position);
-	}
-	
-	public boolean isItemAudio(int position) {
-		return (mThumbIds[position].mMedia.equals(Media.LOCAL_AUDIO) ||
-				mThumbIds[position].mMedia.equals(Media.STREAM_AUDIO) ||
-				mThumbIds[position].mMedia.equals(Media.DRM_LOCAL_AUDIO) ||
-				mThumbIds[position].mMedia.equals(Media.DRM_STREAM_AUDIO));
-	}
+        /* Beethoven Local */
+        new PlayerObject(R.drawable.beethoven, Media.LOCAL_AUDIO, "audio/mp3",false), 
+    };
 
-	public boolean isItemVideo(int position) {
-		return ! isItemAudio(position);
-	}
+    public int getCount()
+    {
+        return mThumbIds.length;
+    }
 
-	public ImageAdapter(Context c) {
-		mContext = c;
-	}
-	
-	public View getView(int position, View convertView, ViewGroup parent) {
-		ImageView imageView;
-		if (convertView == null) 
-		{
-			imageView = new ImageView(mContext);
-			imageView.setLayoutParams(new GridView.LayoutParams(85, 85));
-			imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-			imageView.setPadding(8, 8, 8, 8);
-		}
-		else 
-			imageView = (ImageView) convertView;
+    public Object getItem(int position)
+    {
+        return mThumbIds[position].mID;
+    }
 
-		imageView.setImageResource(mThumbIds[position].mID);
-		if(mThumbIds[position].mEncrypted)
-		{
-			if (ImageAdapter.this.isItemLocal(position))
-				imageView.setBackgroundColor(isLocalItemAccessible(position) ? Color.RED : Color.parseColor("#AAAAAA"));
-			else
-				imageView.setBackgroundColor(Color.parseColor("#FFAAAA"));
-		}
-		else
-		{
-			if (ImageAdapter.this.isItemLocal(position))
-				imageView.setBackgroundColor(isLocalItemAccessible(position) ? Color.GREEN : Color.parseColor("#AAAAAA"));
-			else
-				imageView.setBackgroundColor(Color.parseColor("#AAFFAA"));
-		}
-		return imageView;
-	}
+    public Object getItemMedia(int position)
+    {
+        return mThumbIds[position].mMedia;
+    }
 
-	public enum Media {
-		LOCAL_AUDIO, 
-		STREAM_AUDIO, 
-		LOCAL_VIDEO, 
-		STREAM_VIDEO,
-		DRM_LOCAL_AUDIO, 
-		DRM_STREAM_AUDIO, 
-		DRM_LOCAL_VIDEO, 
-		DRM_STREAM_VIDEO,
-		INVALID
-	}
+    public Object getItemMime(int position)
+    {
+        return mThumbIds[position].mMime;
+    }
 
-	class PlayerObject {
+    public Object getItemExt(int position)
+    {
+        return mThumbIds[position].mExt;
+    }
 
-		private int mID;
-		private Media mMedia;
-		private String mMime;
-		private String mExt;
-		private boolean mEncrypted;
-		private URI mUri;
+    public Object getItemUri(int position)
+    {
+        if (isItemLocal(position) && mThumbIds[position].mUri == null)
+        {
+            if (mThumbIds[position].mUri == null)
+            {
+                int itemId = mThumbIds[position].mID;
+                String filePath = mContext.getResources().getResourceName(
+                    itemId);
+                String fileUri = "file://"
+                    + mContext.getExternalFilesDir(null).getAbsolutePath()
+                    + "/contents/"
+                    + filePath.substring(filePath.lastIndexOf("/") + 1)
+                    + mThumbIds[position].mExt;
+                mThumbIds[position].mUri = URI.create(fileUri);
+            }
+        }
+        return mThumbIds[position].mUri;
+    }
 
-	    public PlayerObject(int xId, Media xMedia, String xMime, boolean xEnc) {
-			this.mID = xId;
-			this.mMedia = xMedia;
-			this.mMime = xMime;
-			this.mExt = "." + this.mMime.substring(this.mMime.lastIndexOf("/") + 1);
-			this.mEncrypted = xEnc;
-			this.mUri = null;
-		}
+    public boolean isLocalItemAccessible(int position)
+    {
+        if (isItemLocal(position))
+            return (new File(((URI) getItemUri(position)).getPath())).canRead();
+        return true;
+    }
 
-	    public PlayerObject(int xId, Media xMedia, String xMime, boolean xEnc, URI xUri) {
-			this.mID = xId;
-			this.mMedia = xMedia;
-			this.mMime = xMime;
-			this.mExt = "." + this.mMime.substring(this.mMime.lastIndexOf("/") + 1);
-			this.mEncrypted = xEnc;
-			this.mUri = xUri;
-		}
+    public long getItemId(int position)
+    {
+        return mThumbIds[position].mID;
+    }
 
-		public int getID() {
-			return mID;
-		}
+    public boolean isItemLocal(int position)
+    {
+        return (mThumbIds[position].mMedia.equals(Media.LOCAL_AUDIO)
+            || mThumbIds[position].mMedia.equals(Media.LOCAL_VIDEO)
+            || mThumbIds[position].mMedia.equals(Media.DRM_LOCAL_AUDIO) || mThumbIds[position].mMedia
+                .equals(Media.DRM_LOCAL_VIDEO));
+    }
 
-		public Media getMedia() {
-			return mMedia;
-		}
+    public boolean isItemStream(int position)
+    {
+        return !isItemLocal(position);
+    }
 
-		public String getMime() {
-			return mMime;
-		}
+    public boolean isItemAudio(int position)
+    {
+        return (mThumbIds[position].mMedia.equals(Media.LOCAL_AUDIO)
+            || mThumbIds[position].mMedia.equals(Media.STREAM_AUDIO)
+            || mThumbIds[position].mMedia.equals(Media.DRM_LOCAL_AUDIO) || mThumbIds[position].mMedia
+                .equals(Media.DRM_STREAM_AUDIO));
+    }
 
-		public String getExt() {
-			return mExt;
-		}
+    public boolean isItemVideo(int position)
+    {
+        return !isItemAudio(position);
+    }
 
-		public URI getUri() {
-			return mUri;
-		}
+    public ImageAdapter(Context c)
+    {
+        mContext = c;
+    }
 
-	}
+    public View getView(int position, View convertView, ViewGroup parent)
+    {
+        ImageView imageView;
+        if (convertView == null)
+        {
+            imageView = new ImageView(mContext);
+            imageView.setLayoutParams(new GridView.LayoutParams(85, 85));
+            imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            imageView.setPadding(8, 8, 8, 8);
+        }
+        else
+            imageView = (ImageView) convertView;
+
+        imageView.setImageResource(mThumbIds[position].mID);
+        if (mThumbIds[position].mEncrypted)
+        {
+            if (ImageAdapter.this.isItemLocal(position))
+                imageView
+                    .setBackgroundColor(isLocalItemAccessible(position) ? Color.RED
+                        : Color.parseColor("#AAAAAA"));
+            else
+                imageView.setBackgroundColor(Color.parseColor("#FFAAAA"));
+        }
+        else
+        {
+            if (ImageAdapter.this.isItemLocal(position))
+                imageView
+                    .setBackgroundColor(isLocalItemAccessible(position) ? Color.GREEN
+                        : Color.parseColor("#AAAAAA"));
+            else
+                imageView.setBackgroundColor(Color.parseColor("#AAFFAA"));
+        }
+        return imageView;
+    }
+
+    public enum Media
+    {
+        LOCAL_AUDIO, STREAM_AUDIO, LOCAL_VIDEO, STREAM_VIDEO, DRM_LOCAL_AUDIO, DRM_STREAM_AUDIO, DRM_LOCAL_VIDEO, DRM_STREAM_VIDEO, INVALID
+    }
+
+    class PlayerObject
+    {
+
+        private int     mID;
+        private Media   mMedia;
+        private String  mMime;
+        private String  mExt;
+        private boolean mEncrypted;
+        private URI     mUri;
+
+        public PlayerObject(int xId, Media xMedia, String xMime, boolean xEnc)
+        {
+            this.mID = xId;
+            this.mMedia = xMedia;
+            this.mMime = xMime;
+            this.mExt = "."
+                + this.mMime.substring(this.mMime.lastIndexOf("/") + 1);
+            this.mEncrypted = xEnc;
+            this.mUri = null;
+        }
+
+        public PlayerObject(int xId, Media xMedia, String xMime, boolean xEnc,
+            URI xUri)
+        {
+            this.mID = xId;
+            this.mMedia = xMedia;
+            this.mMime = xMime;
+            this.mExt = "."
+                + this.mMime.substring(this.mMime.lastIndexOf("/") + 1);
+            this.mEncrypted = xEnc;
+            this.mUri = xUri;
+        }
+
+        public int getID()
+        {
+            return mID;
+        }
+
+        public Media getMedia()
+        {
+            return mMedia;
+        }
+
+        public String getMime()
+        {
+            return mMime;
+        }
+
+        public String getExt()
+        {
+            return mExt;
+        }
+
+        public URI getUri()
+        {
+            return mUri;
+        }
+
+    }
 
 }
