@@ -410,7 +410,7 @@ public class VideoPlayer extends Activity implements SurfaceHolder.Callback,
         // Do pause
         if (mPlayerThread != null)
             start();
-        super.onPause();
+        super.onResume();
     }
 
     /**
